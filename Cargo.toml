@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-embassy-stm32 = { version = "^0.1.0", git = "https://github.com/embassy-rs/embassy.git", features = ["defmt", "stm32f405rg", "unstable-pac", "memory-x", "time-driver-tim4", "exti", "chrono", "low-power"] }
+ embassy-stm32 = { version = "^0.1.0", git = "https://github.com/embassy-rs/embassy.git", features = ["defmt", "stm32f405rg", "unstable-pac", "memory-x", "time-driver-any", "exti", "chrono", "low-power"] }
 embassy-sync = { version = "^0.6.1", git = "https://github.com/embassy-rs/embassy.git", features = ["defmt"] }
 embassy-executor = { version = "^0.7.0", git = "https://github.com/embassy-rs/embassy.git", features = ["task-arena-size-32768", "arch-cortex-m", "executor-thread", "executor-interrupt", "defmt"] }
 embassy-time = { version = "^0.4.0", git = "https://github.com/embassy-rs/embassy.git", features = ["defmt", "defmt-timestamp-uptime", "tick-hz-32_768"] }

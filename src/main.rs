@@ -12,7 +12,6 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use static_cell::StaticCell;
 use defmt::*;
-use embassy_stm32::interrupt::typelevel::TIM2;
 use {defmt_rtt as _, panic_probe as _};
 
 mod types;
@@ -38,15 +37,37 @@ async fn main(spawner: Spawner) {
     let can = StaticCell::init(&CAN, can_mutex);
     spawner.spawn(read_can(can)).unwrap();
 
-    let ch1_pin = PwmPin::new_ch1(p.PA0, OutputType::PushPull);
-    let mut pwm = SimplePwm::new(p.TIM2, Some(ch1_pin), None, None, None, khz(25), Default::default());
-    let mut ch1 = pwm.ch1();
-    ch1.enable();
+    //let ch1_pin = PwmPin::new_ch1(p.PA0, OutputType::PushPull);
+    //let mut pwm = SimplePwm::new(p.TIM2, Some(ch1_pin), None, None, None, khz(25), Default::default());
+    //let mut ch1 = pwm.ch1();
+    //ch1.enable();
+    
+    let fanradl = PwmPin::new_ch3(p.PB10, OutputType::PushPull); 
+    let fanradr = PwmPin::new_ch4(p.PB11, OutputType::PushPull); 
+    let mut fanrad_pwm_driver = SimplePwm::new(p.TIM2, None, None, Some(fanradl), Some(fanradr), khz(25), Default::default());
+    let fanrad_pwm_channels = fanrad_pwm_driver.split();
+    let mut fanradl_pwm_ch = fanrad_pwm_channels.ch3;
+    let mut fanradr_pwm_ch = fanrad_pwm_channels.ch4;
+    fanradl_pwm_ch.enable();
+    fanradr_pwm_ch.enable();
 
-
-    set_pwm_real(&mut ch1 , 0.5);
-    set_pwm_real(&mut ch1 , 0_f32);
-    set_pwm_real(&mut ch1 , 1_f32);
+    let fanbattr = PwmPin::new_ch1(p.PC6, OutputType::PushPull); 
+    let fanbattl = PwmPin::new_ch2(p.PC7, OutputType::PushPull); 
+    let mut fanbatt_pwm_driver = SimplePwm::new(p.TIM3, Some(fanbattr), Some(fanbattl), None, None, khz(25), Default::default());
+    let fanbatt_pwm_channels = fanbatt_pwm_driver.split();
+    let mut fanbattr_pwm_ch = fanbatt_pwm_channels.ch1;
+    let mut fanbattl_pwm_ch = fanbatt_pwm_channels.ch2;
+    fanbattr_pwm_ch.enable();
+    fanbattl_pwm_ch.enable();
+    
+    let pumpr = PwmPin::new_ch1(p.PB6, OutputType::PushPull); 
+    let pumpl = PwmPin::new_ch2(p.PB7, OutputType::PushPull); 
+    let mut pump_pwm_driver = SimplePwm::new(p.TIM4 , Some(pumpr), Some(pumpl), None, None, khz(25), Default::default());
+    let pump_pwm_channels = pump_pwm_driver.split();
+    let mut pumpr_pwm_ch = pump_pwm_channels.ch1;
+    let mut pumpl_pwm_ch = pump_pwm_channels.ch2;
+    pumpr_pwm_ch.enable();
+    pumpl_pwm_ch.enable();
 
     loop {
         embassy_time::Timer::after_millis(1000).await;
