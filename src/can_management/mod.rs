@@ -1,7 +1,7 @@
 pub mod frame;
 pub mod can_controller;
 pub use can_controller::{CanError,CanController};
-use crate::CanMsg;
+pub mod messages;
 use defmt::info;
 pub use frame::CanFrame;
 
