@@ -45,6 +45,26 @@ struct Pcu {
 }
 
 
+impl Pcu {
+    fn handle_driver(&mut self, message : messages::Driver) {
+        self.enable_brake.set_level(if message.brake() < 5 {Level::High} else {Level::Low});
+    }
+
+fn handle_pcu(&mut self, message :messages::Pcu) {
+        match message.mode_raw() {
+            val if val == messages::Pcu::MODE_MIN as u8 => {
+                message.set_mode()
+            },
+            val if val == messages::Pcu::MODE_MIN + 1 as u8 => {
+            },
+            val if val == messages::Pcu::MODE_MAX as u8 => {
+            }
+            _ => (),
+        }
+    }
+}
+
+
 static CAN: StaticCell<CanController> = StaticCell::new();
 
 static PWM_FANRAD: StaticCell<PwmDualController<'_, embassy_stm32::peripherals::TIM2, 1>> =
@@ -54,7 +74,6 @@ static PWM_FANBATT: StaticCell<PwmDualController<'_, embassy_stm32::peripherals:
 static PWM_PUMP: StaticCell<PwmDualController<'_, embassy_stm32::peripherals::TIM4, 1>> =
     StaticCell::new();
 
-static FAULT_PUMPL: StaticCell<embassy_stm32::gpio::Input> = StaticCell::new();
 static FAULT_PUMPR: StaticCell<embassy_stm32::gpio::Input> = StaticCell::new();
 static FAULT_FANBATTL: StaticCell<embassy_stm32::gpio::Input> = StaticCell::new();
 static FAULT_FANBATTR: StaticCell<embassy_stm32::gpio::Input> = StaticCell::new();
@@ -80,6 +99,8 @@ fn pwm_enable_check(a: &[bool; 1]) -> bool {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
+
+static FAULT_PUMPL: StaticCell<embassy_stm32::gpio::Input> = StaticCell::new();
     let p = embassy_stm32::init(Default::default());
     let pins = Pins::new(p);
 
@@ -194,7 +215,7 @@ async fn main(spawner: Spawner) {
     );
     let enable_12v = StaticCell::init(
         &ENABLE_12V,
-        Output::new(pins.pin_12v_enable, Level::Low, Speed::Low),
+        Output::new(pins.pin_12v_enable, Level::High, Speed::Low),
     );
     let enable_dv = StaticCell::init(
         &ENABLE_DV,
@@ -202,7 +223,7 @@ async fn main(spawner: Spawner) {
     );
     let enable_24v = StaticCell::init(
         &ENABLE_DV,
-        Output::new(pins.pin_24v_enable, Level::Low, Speed::Low),
+        Output::new(pins.pin_24v_enable, Level::High, Speed::Low),
     );
     let enable_brake = StaticCell::init(
         &ENABLE_BRAKE,
@@ -239,106 +260,32 @@ async fn main(spawner: Spawner) {
 
 #[embassy_executor::task]
 async fn can_reader(pcu_mutex: &'static Mutex<CriticalSectionRawMutex, Pcu>) {
+    loop {
     let mut pcu = pcu_mutex.lock().await;
-    match pcu.can.read().await {
-        Ok(frame) => {
-            match frame.id() {
-                val if val == messages::PcuRf::MESSAGE_ID as u16 => {
-                    let data: &[u8] = &frame._bytes()[..1];
-                    match messages::PcuRf::try_from(data) {
-                        Ok(message) => {
-                            if message.rf_signal_raw() {
-                                pcu.rf.set_high();
-                            } else {
-                                pcu.rf.set_low();
-                            };
-                            let ack = match messages::PcuRfAck::new(pcu.rf.is_set_high()) {
-                                Ok(res) => res,
-                                Err(_) => return,
-                            };
-                            can_operation(
-                                messages::PcuRfAck::MESSAGE_ID as u16,
-                                &[ack.raw()[0], 0, 0, 0, 0, 0, 0, 0],
-                                &mut pcu.can,
-                            )
-                            .await;
-                        }
-                        Err(_) => {
-                            info!("Error parsing data")
-                        }
-                    }
+    match pcu.can.read().await{
+        Ok(message) => {
+            match message.id() {
+                val if val == messages::Pcu::MESSAGE_ID as u16 => {
+                    pcu.handle_pcu(message._bytes());
                 }
                 val if val == messages::Driver::MESSAGE_ID as u16 => {
-                    let data: &[u8] = &frame._bytes()[..2];
-                    match messages::Driver::try_from(data) {
-                        Ok(message) => match message.brake_raw() {
-                            0 => pcu.enable_brake.set_low(),
-                            _ => pcu.enable_brake.set_high(),
-                        },
-                        Err(_) => {
-                            info!("Error parsing data")
-                        }
-                    }
-                }
-                val if val == messages::Pcu::MESSAGE_ID as u16 => {
-                    let data: &[u8] = &frame._bytes()[..6];
-                    match messages::Pcu::try_from(data) {
-                        Ok(message) => {
-                            match message.pump_enable() {
-                                true => pcu.pwm_pump.enable(0),
-                                false => pcu.pwm_pump.disable(0),
-                            }
-                            if message.pumpl_speed() != -1_f32 {
-                                pcu.pwm_pump
-                                    .set_duty_left(scale_f32_to_u16(message.pumpl_speed()));
-                            }
-                            if message.pumpr_speed() != -1_f32 {
-                                pcu.pwm_pump
-                                    .set_duty_right(scale_f32_to_u16(message.pumpr_speed()));
-                            }
-                            match message.fanrad_enable() {
-                                true => pcu.pwm_fanrad.enable(0),
-                                false => pcu.pwm_fanrad.disable(0),
-                            }
-                            if message.fanradl_speed() != -1_f32 {
-                                pcu.pwm_fanrad
-                                    .set_duty_left(scale_f32_to_u16(message.fanradl_speed()));
-                            }
-                            if message.fanradr_speed() != -1_f32 {
-                                pcu.pwm_fanrad
-                                    .set_duty_right(scale_f32_to_u16(message.fanradr_speed()));
-                            }
-                            match message.fanbatt_enable() {
-                                true => pcu.pwm_fanbatt.enable(0),
-                                false => pcu.pwm_fanbatt.disable(0),
-                            }
-                            if message.fanbattl_speed() != -1_f32 {
-                                pcu.pwm_fanbatt
-                                    .set_duty_left(scale_f32_to_u16(message.fanbattl_speed()));
-                            }
-                            if message.fanbattr_speed() != -1_f32 {
-                                pcu.pwm_fanbatt
-                                    .set_duty_right(scale_f32_to_u16(message.fanbattr_speed()));
-                            }
-                        }
-                        Err(_) => {
-                            info!("Error parsing")
-                        }
-                    }
+                        pcu.handle_driver(message._bytes());
                 }
                 _ => (),
             }
             drop(pcu);
-        }
+        },
         Err(_) => {
             drop(pcu);
             embassy_time::Timer::after_millis(20).await;
         }
+    };
     }
 }
 
 #[embassy_executor::task]
 async fn fault_detection(pcu_mutex: &'static Mutex<CriticalSectionRawMutex, Pcu>) {
+    loop {
     let mut pcu = pcu_mutex.lock().await;
     let mut message = match messages::PcuFault::new(false, false, false, false, false, false, false)
     {
@@ -380,6 +327,7 @@ async fn fault_detection(pcu_mutex: &'static Mutex<CriticalSectionRawMutex, Pcu>
         &mut pcu.can,
     ).await;
     embassy_time::Timer::after_secs(5).await;
+    }
 }
 
 fn scale_f32_to_u16(val: f32) -> u16 {
