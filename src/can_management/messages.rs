@@ -19,6 +19,8 @@ use arbitrary::{Arbitrary, Unstructured};
 pub enum Messages {
     /// TanksEBS
     TanksEbs(TanksEbs),
+    /// CarMission
+    CarMission(CarMission),
     /// PcuFault
     PcuFault(PcuFault),
     /// Paddle
@@ -47,12 +49,12 @@ pub enum Messages {
     CarStatus(CarStatus),
     /// CarSettings
     CarSettings(CarSettings),
-    /// CarMission
-    CarMission(CarMission),
     /// CheckASB
     CheckAsb(CheckAsb),
     /// LapStart
     LapStart(LapStart),
+    /// CarMissionStatus
+    CarMissionStatus(CarMissionStatus),
     /// Temp1
     Temp1(Temp1),
     /// Temp2
@@ -73,6 +75,8 @@ pub enum Messages {
     Calib(Calib),
     /// CalibAck
     CalibAck(CalibAck),
+    /// PcuSwControl
+    PcuSwControl(PcuSwControl),
     /// PcuRfAck
     PcuRfAck(PcuRfAck),
     /// Lem
@@ -86,6 +90,7 @@ impl Messages {
         
         let res = match id {
             60 => Messages::TanksEbs(TanksEbs::try_from(payload)?),
+            71 => Messages::CarMission(CarMission::try_from(payload)?),
             81 => Messages::PcuFault(PcuFault::try_from(payload)?),
             82 => Messages::Paddle(Paddle::try_from(payload)?),
             83 => Messages::Driver(Driver::try_from(payload)?),
@@ -100,9 +105,9 @@ impl Messages {
             100 => Messages::Map(Map::try_from(payload)?),
             101 => Messages::CarStatus(CarStatus::try_from(payload)?),
             102 => Messages::CarSettings(CarSettings::try_from(payload)?),
-            103 => Messages::CarMission(CarMission::try_from(payload)?),
             104 => Messages::CheckAsb(CheckAsb::try_from(payload)?),
             112 => Messages::LapStart(LapStart::try_from(payload)?),
+            113 => Messages::CarMissionStatus(CarMissionStatus::try_from(payload)?),
             256 => Messages::Temp1(Temp1::try_from(payload)?),
             257 => Messages::Temp2(Temp2::try_from(payload)?),
             258 => Messages::SuspRear(SuspRear::try_from(payload)?),
@@ -113,6 +118,7 @@ impl Messages {
             304 => Messages::Pcu(Pcu::try_from(payload)?),
             305 => Messages::Calib(Calib::try_from(payload)?),
             306 => Messages::CalibAck(CalibAck::try_from(payload)?),
+            307 => Messages::PcuSwControl(PcuSwControl::try_from(payload)?),
             308 => Messages::PcuRfAck(PcuRfAck::try_from(payload)?),
             962 => Messages::Lem(Lem::try_from(payload)?),
             n => return Err(CanError::UnknownMessageId(n)),
@@ -384,6 +390,149 @@ impl<'a> Arbitrary<'a> for TanksEbs {
         TanksEbs::new(system_check,press_left_tank,press_right_tank,sanity_left_sensor,sanity_right_sensor).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
+
+/// CarMission
+///
+/// - ID: 71 (0x47)
+/// - Size: 1 bytes
+/// - Transmitter: SW
+#[derive(Clone, Copy)]
+pub struct CarMission {
+    raw: [u8; 1],
+}
+
+impl CarMission {
+    pub const MESSAGE_ID: u32 = 71;
+    
+    pub const MISSION_MIN: u8 = 0_u8;
+    pub const MISSION_MAX: u8 = 7_u8;
+    
+    /// Construct new CarMission from values
+    pub fn new(mission: u8) -> Result<Self, CanError> {
+        let mut res = Self { raw: [0u8; 1] };
+        res.set_mission(mission)?;
+        Ok(res)
+    }
+    
+    /// Access message payload raw value
+    pub fn raw(&self) -> &[u8; 1] {
+        &self.raw
+    }
+    
+    /// Mission
+    ///
+    /// - Min: 0
+    /// - Max: 7
+    /// - Unit: ""
+    /// - Receivers: VCU
+    #[inline(always)]
+    pub fn mission(&self) -> CarMissionMission {
+        let signal = self.raw.view_bits::<Lsb0>()[0..3].load_le::<u8>();
+        
+        match signal {
+            7 => CarMissionMission::DvInspection,
+            6 => CarMissionMission::DvEbsTest,
+            5 => CarMissionMission::DvTrackdrive,
+            4 => CarMissionMission::DvAutocross,
+            3 => CarMissionMission::DvSkidpad,
+            2 => CarMissionMission::DvAcceleration,
+            1 => CarMissionMission::Manualy,
+            0 => CarMissionMission::None,
+            _ => CarMissionMission::_Other(self.mission_raw()),
+        }
+    }
+    
+    /// Get raw value of Mission
+    ///
+    /// - Start bit: 0
+    /// - Signal size: 3 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn mission_raw(&self) -> u8 {
+        let signal = self.raw.view_bits::<Lsb0>()[0..3].load_le::<u8>();
+        
+        signal
+    }
+    
+    /// Set value of Mission
+    #[inline(always)]
+    pub fn set_mission(&mut self, value: u8) -> Result<(), CanError> {
+        #[cfg(feature = "range_checked")]
+        if value < 0_u8 || 7_u8 < value {
+            return Err(CanError::ParameterOutOfRange { message_id: 71 });
+        }
+        self.raw.view_bits_mut::<Lsb0>()[0..3].store_le(value);
+        Ok(())
+    }
+    
+}
+
+impl core::convert::TryFrom<&[u8]> for CarMission {
+    type Error = CanError;
+    
+    #[inline(always)]
+    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
+        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        let mut raw = [0u8; 1];
+        raw.copy_from_slice(&payload[..1]);
+        Ok(Self { raw })
+    }
+}
+
+#[cfg(feature = "debug")]
+impl core::fmt::Debug for CarMission {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if f.alternate() {
+            f.debug_struct("CarMission")
+                .field("mission", &self.mission())
+            .finish()
+        } else {
+            f.debug_tuple("CarMission").field(&self.raw).finish()
+        }
+    }
+}
+
+#[cfg(feature = "arb")]
+impl<'a> Arbitrary<'a> for CarMission {
+    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
+        let mission = u.int_in_range(0..=7)?;
+        CarMission::new(mission).map_err(|_| arbitrary::Error::IncorrectFormat)
+    }
+}
+/// Defined values for Mission
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub enum CarMissionMission {
+    DvInspection,
+    DvEbsTest,
+    DvTrackdrive,
+    DvAutocross,
+    DvSkidpad,
+    DvAcceleration,
+    Manualy,
+    None,
+    _Other(u8),
+}
+
+impl From<CarMissionMission> for u8 {
+    fn from(val: CarMissionMission) -> u8 {
+        match val {
+            CarMissionMission::DvInspection => 7,
+            CarMissionMission::DvEbsTest => 6,
+            CarMissionMission::DvTrackdrive => 5,
+            CarMissionMission::DvAutocross => 4,
+            CarMissionMission::DvSkidpad => 3,
+            CarMissionMission::DvAcceleration => 2,
+            CarMissionMission::Manualy => 1,
+            CarMissionMission::None => 0,
+            CarMissionMission::_Other(x) => x,
+        }
+    }
+}
+
 
 /// PcuFault
 ///
@@ -3566,149 +3715,6 @@ impl<'a> Arbitrary<'a> for CarSettings {
     }
 }
 
-/// CarMission
-///
-/// - ID: 103 (0x67)
-/// - Size: 1 bytes
-/// - Transmitter: SW
-#[derive(Clone, Copy)]
-pub struct CarMission {
-    raw: [u8; 1],
-}
-
-impl CarMission {
-    pub const MESSAGE_ID: u32 = 103;
-    
-    pub const MISSION_MIN: u8 = 0_u8;
-    pub const MISSION_MAX: u8 = 7_u8;
-    
-    /// Construct new CarMission from values
-    pub fn new(mission: u8) -> Result<Self, CanError> {
-        let mut res = Self { raw: [0u8; 1] };
-        res.set_mission(mission)?;
-        Ok(res)
-    }
-    
-    /// Access message payload raw value
-    pub fn raw(&self) -> &[u8; 1] {
-        &self.raw
-    }
-    
-    /// Mission
-    ///
-    /// - Min: 0
-    /// - Max: 7
-    /// - Unit: ""
-    /// - Receivers: VCU
-    #[inline(always)]
-    pub fn mission(&self) -> CarMissionMission {
-        let signal = self.raw.view_bits::<Lsb0>()[0..3].load_le::<u8>();
-        
-        match signal {
-            7 => CarMissionMission::DvInspection,
-            6 => CarMissionMission::DvEbsTest,
-            5 => CarMissionMission::DvTrackdrive,
-            4 => CarMissionMission::DvAutocross,
-            3 => CarMissionMission::DvSkidpad,
-            2 => CarMissionMission::DvAcceleration,
-            1 => CarMissionMission::Manualy,
-            0 => CarMissionMission::None,
-            _ => CarMissionMission::_Other(self.mission_raw()),
-        }
-    }
-    
-    /// Get raw value of Mission
-    ///
-    /// - Start bit: 0
-    /// - Signal size: 3 bits
-    /// - Factor: 1
-    /// - Offset: 0
-    /// - Byte order: LittleEndian
-    /// - Value type: Unsigned
-    #[inline(always)]
-    pub fn mission_raw(&self) -> u8 {
-        let signal = self.raw.view_bits::<Lsb0>()[0..3].load_le::<u8>();
-        
-        signal
-    }
-    
-    /// Set value of Mission
-    #[inline(always)]
-    pub fn set_mission(&mut self, value: u8) -> Result<(), CanError> {
-        #[cfg(feature = "range_checked")]
-        if value < 0_u8 || 7_u8 < value {
-            return Err(CanError::ParameterOutOfRange { message_id: 103 });
-        }
-        self.raw.view_bits_mut::<Lsb0>()[0..3].store_le(value);
-        Ok(())
-    }
-    
-}
-
-impl core::convert::TryFrom<&[u8]> for CarMission {
-    type Error = CanError;
-    
-    #[inline(always)]
-    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
-        let mut raw = [0u8; 1];
-        raw.copy_from_slice(&payload[..1]);
-        Ok(Self { raw })
-    }
-}
-
-#[cfg(feature = "debug")]
-impl core::fmt::Debug for CarMission {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if f.alternate() {
-            f.debug_struct("CarMission")
-                .field("mission", &self.mission())
-            .finish()
-        } else {
-            f.debug_tuple("CarMission").field(&self.raw).finish()
-        }
-    }
-}
-
-#[cfg(feature = "arb")]
-impl<'a> Arbitrary<'a> for CarMission {
-    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
-        let mission = u.int_in_range(0..=7)?;
-        CarMission::new(mission).map_err(|_| arbitrary::Error::IncorrectFormat)
-    }
-}
-/// Defined values for Mission
-#[derive(Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub enum CarMissionMission {
-    DvInspection,
-    DvEbsTest,
-    DvTrackdrive,
-    DvAutocross,
-    DvSkidpad,
-    DvAcceleration,
-    Manualy,
-    None,
-    _Other(u8),
-}
-
-impl From<CarMissionMission> for u8 {
-    fn from(val: CarMissionMission) -> u8 {
-        match val {
-            CarMissionMission::DvInspection => 7,
-            CarMissionMission::DvEbsTest => 6,
-            CarMissionMission::DvTrackdrive => 5,
-            CarMissionMission::DvAutocross => 4,
-            CarMissionMission::DvSkidpad => 3,
-            CarMissionMission::DvAcceleration => 2,
-            CarMissionMission::Manualy => 1,
-            CarMissionMission::None => 0,
-            CarMissionMission::_Other(x) => x,
-        }
-    }
-}
-
-
 /// CheckASB
 ///
 /// - ID: 104 (0x68)
@@ -3725,9 +3731,9 @@ impl CheckAsb {
     pub const RESPONSE_STATUS_MAX: u8 = 2_u8;
     
     /// Construct new CheckASB from values
-    pub fn new(response_status: u8) -> Result<Self, CanError> {
+    pub fn new(mode: bool) -> Result<Self, CanError> {
         let mut res = Self { raw: [0u8; 1] };
-        res.set_response_status(response_status)?;
+        res.set_mode(mode)?;
         Ok(res)
     }
     
@@ -3736,47 +3742,31 @@ impl CheckAsb {
         &self.raw
     }
     
-    /// response_status
-    ///
-    /// - Min: 0
-    /// - Max: 2
-    /// - Unit: ""
-    /// - Receivers: Vector__XXX
-    #[inline(always)]
-    pub fn response_status(&self) -> CheckAsbResponseStatus {
-        let signal = self.raw.view_bits::<Lsb0>()[0..3].load_le::<u8>();
-        
-        match signal {
-            2 => CheckAsbResponseStatus::Error,
-            1 => CheckAsbResponseStatus::Failure,
-            0 => CheckAsbResponseStatus::Success,
-            _ => CheckAsbResponseStatus::_Other(self.response_status_raw()),
-        }
-    }
-    
-    /// Get raw value of response_status
+    /// Get raw value of Mode
     ///
     /// - Start bit: 0
-    /// - Signal size: 3 bits
+    /// - Signal size: 1 bits
     /// - Factor: 1
     /// - Offset: 0
     /// - Byte order: LittleEndian
     /// - Value type: Unsigned
     #[inline(always)]
-    pub fn response_status_raw(&self) -> u8 {
-        let signal = self.raw.view_bits::<Lsb0>()[0..3].load_le::<u8>();
+    pub fn mode_raw(&self) -> bool {
+        let signal = self.raw.view_bits::<Lsb0>()[0..1].load_le::<u8>();
         
-        signal
+        signal == 1
     }
     
-    /// Set value of response_status
-    #[inline(always)]
-    pub fn set_response_status(&mut self, value: u8) -> Result<(), CanError> {
-        #[cfg(feature = "range_checked")]
-        if value < 0_u8 || 2_u8 < value {
-            return Err(CanError::ParameterOutOfRange { message_id: 104 });
+    pub fn mode(&mut self) -> Result<CheckAsbMode, CanError> {
+        match self.mode_raw() {
+            multiplexor => Err(CanError::InvalidMultiplexor { message_id: 104, multiplexor: multiplexor.into() }),
         }
-        self.raw.view_bits_mut::<Lsb0>()[0..3].store_le(value);
+    }
+    /// Set value of Mode
+    #[inline(always)]
+    fn set_mode(&mut self, value: bool) -> Result<(), CanError> {
+        let value = value as u8;
+        self.raw.view_bits_mut::<Lsb0>()[0..1].store_le(value);
         Ok(())
     }
     
@@ -3799,7 +3789,6 @@ impl core::fmt::Debug for CheckAsb {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if f.alternate() {
             f.debug_struct("CheckAsb")
-                .field("response_status", &self.response_status())
             .finish()
         } else {
             f.debug_tuple("CheckAsb").field(&self.raw).finish()
@@ -3810,8 +3799,8 @@ impl core::fmt::Debug for CheckAsb {
 #[cfg(feature = "arb")]
 impl<'a> Arbitrary<'a> for CheckAsb {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
-        let response_status = u.int_in_range(0..=2)?;
-        CheckAsb::new(response_status).map_err(|_| arbitrary::Error::IncorrectFormat)
+        let mode = u.int_in_range(0..=1)? == 1;
+        CheckAsb::new(mode).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 /// Defined values for response_status
@@ -3833,6 +3822,11 @@ impl From<CheckAsbResponseStatus> for u8 {
             CheckAsbResponseStatus::_Other(x) => x,
         }
     }
+}
+
+/// Defined values for multiplexed signal CheckASB
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub enum CheckAsbMode {
 }
 
 
@@ -3935,6 +3929,295 @@ impl<'a> Arbitrary<'a> for LapStart {
         LapStart::new(start).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
+
+/// CarMissionStatus
+///
+/// - ID: 113 (0x71)
+/// - Size: 1 bytes
+/// - Transmitter: VCU
+#[derive(Clone, Copy)]
+pub struct CarMissionStatus {
+    raw: [u8; 1],
+}
+
+impl CarMissionStatus {
+    pub const MESSAGE_ID: u32 = 113;
+    
+    pub const MISSION_MIN: u8 = 0_u8;
+    pub const MISSION_MAX: u8 = 7_u8;
+    pub const MISSION_STATUS_MIN: u8 = 0_u8;
+    pub const MISSION_STATUS_MAX: u8 = 2_u8;
+    pub const AS_STATUS_MIN: u8 = 0_u8;
+    pub const AS_STATUS_MAX: u8 = 7_u8;
+    
+    /// Construct new CarMissionStatus from values
+    pub fn new(mission: u8, mission_status: u8, as_status: u8) -> Result<Self, CanError> {
+        let mut res = Self { raw: [0u8; 1] };
+        res.set_mission(mission)?;
+        res.set_mission_status(mission_status)?;
+        res.set_as_status(as_status)?;
+        Ok(res)
+    }
+    
+    /// Access message payload raw value
+    pub fn raw(&self) -> &[u8; 1] {
+        &self.raw
+    }
+    
+    /// Mission
+    ///
+    /// - Min: 0
+    /// - Max: 7
+    /// - Unit: ""
+    /// - Receivers: SW
+    #[inline(always)]
+    pub fn mission(&self) -> CarMissionStatusMission {
+        let signal = self.raw.view_bits::<Lsb0>()[0..3].load_le::<u8>();
+        
+        match signal {
+            7 => CarMissionStatusMission::DvInspection,
+            6 => CarMissionStatusMission::DvEbsTest,
+            5 => CarMissionStatusMission::DvTrackdrive,
+            4 => CarMissionStatusMission::DvAutocross,
+            3 => CarMissionStatusMission::DvSkidpad,
+            2 => CarMissionStatusMission::DvAcceleration,
+            1 => CarMissionStatusMission::Manualy,
+            0 => CarMissionStatusMission::None,
+            _ => CarMissionStatusMission::_Other(self.mission_raw()),
+        }
+    }
+    
+    /// Get raw value of Mission
+    ///
+    /// - Start bit: 0
+    /// - Signal size: 3 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn mission_raw(&self) -> u8 {
+        let signal = self.raw.view_bits::<Lsb0>()[0..3].load_le::<u8>();
+        
+        signal
+    }
+    
+    /// Set value of Mission
+    #[inline(always)]
+    pub fn set_mission(&mut self, value: u8) -> Result<(), CanError> {
+        #[cfg(feature = "range_checked")]
+        if value < 0_u8 || 7_u8 < value {
+            return Err(CanError::ParameterOutOfRange { message_id: 113 });
+        }
+        self.raw.view_bits_mut::<Lsb0>()[0..3].store_le(value);
+        Ok(())
+    }
+    
+    /// MissionStatus
+    ///
+    /// - Min: 0
+    /// - Max: 2
+    /// - Unit: ""
+    /// - Receivers: SW
+    #[inline(always)]
+    pub fn mission_status(&self) -> CarMissionStatusMissionStatus {
+        let signal = self.raw.view_bits::<Lsb0>()[3..5].load_le::<u8>();
+        
+        match signal {
+            2 => CarMissionStatusMissionStatus::MissionFinished,
+            1 => CarMissionStatusMissionStatus::MissionRunning,
+            0 => CarMissionStatusMissionStatus::MissionNotRunning,
+            _ => CarMissionStatusMissionStatus::_Other(self.mission_status_raw()),
+        }
+    }
+    
+    /// Get raw value of MissionStatus
+    ///
+    /// - Start bit: 3
+    /// - Signal size: 2 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn mission_status_raw(&self) -> u8 {
+        let signal = self.raw.view_bits::<Lsb0>()[3..5].load_le::<u8>();
+        
+        signal
+    }
+    
+    /// Set value of MissionStatus
+    #[inline(always)]
+    pub fn set_mission_status(&mut self, value: u8) -> Result<(), CanError> {
+        #[cfg(feature = "range_checked")]
+        if value < 0_u8 || 2_u8 < value {
+            return Err(CanError::ParameterOutOfRange { message_id: 113 });
+        }
+        self.raw.view_bits_mut::<Lsb0>()[3..5].store_le(value);
+        Ok(())
+    }
+    
+    /// AsStatus
+    ///
+    /// - Min: 0
+    /// - Max: 7
+    /// - Unit: ""
+    /// - Receivers: SW
+    #[inline(always)]
+    pub fn as_status(&self) -> CarMissionStatusAsStatus {
+        let signal = self.raw.view_bits::<Lsb0>()[5..8].load_le::<u8>();
+        
+        match signal {
+            5 => CarMissionStatusAsStatus::Finish,
+            4 => CarMissionStatusAsStatus::EmergencyBrake,
+            3 => CarMissionStatusAsStatus::Driving,
+            2 => CarMissionStatusAsStatus::Ready,
+            1 => CarMissionStatusAsStatus::Off,
+            _ => CarMissionStatusAsStatus::_Other(self.as_status_raw()),
+        }
+    }
+    
+    /// Get raw value of AsStatus
+    ///
+    /// - Start bit: 5
+    /// - Signal size: 3 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn as_status_raw(&self) -> u8 {
+        let signal = self.raw.view_bits::<Lsb0>()[5..8].load_le::<u8>();
+        
+        signal
+    }
+    
+    /// Set value of AsStatus
+    #[inline(always)]
+    pub fn set_as_status(&mut self, value: u8) -> Result<(), CanError> {
+        #[cfg(feature = "range_checked")]
+        if value < 0_u8 || 7_u8 < value {
+            return Err(CanError::ParameterOutOfRange { message_id: 113 });
+        }
+        self.raw.view_bits_mut::<Lsb0>()[5..8].store_le(value);
+        Ok(())
+    }
+    
+}
+
+impl core::convert::TryFrom<&[u8]> for CarMissionStatus {
+    type Error = CanError;
+    
+    #[inline(always)]
+    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
+        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        let mut raw = [0u8; 1];
+        raw.copy_from_slice(&payload[..1]);
+        Ok(Self { raw })
+    }
+}
+
+#[cfg(feature = "debug")]
+impl core::fmt::Debug for CarMissionStatus {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if f.alternate() {
+            f.debug_struct("CarMissionStatus")
+                .field("mission", &self.mission())
+                .field("mission_status", &self.mission_status())
+                .field("as_status", &self.as_status())
+            .finish()
+        } else {
+            f.debug_tuple("CarMissionStatus").field(&self.raw).finish()
+        }
+    }
+}
+
+#[cfg(feature = "arb")]
+impl<'a> Arbitrary<'a> for CarMissionStatus {
+    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
+        let mission = u.int_in_range(0..=7)?;
+        let mission_status = u.int_in_range(0..=2)?;
+        let as_status = u.int_in_range(0..=7)?;
+        CarMissionStatus::new(mission,mission_status,as_status).map_err(|_| arbitrary::Error::IncorrectFormat)
+    }
+}
+/// Defined values for Mission
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub enum CarMissionStatusMission {
+    DvInspection,
+    DvEbsTest,
+    DvTrackdrive,
+    DvAutocross,
+    DvSkidpad,
+    DvAcceleration,
+    Manualy,
+    None,
+    _Other(u8),
+}
+
+impl From<CarMissionStatusMission> for u8 {
+    fn from(val: CarMissionStatusMission) -> u8 {
+        match val {
+            CarMissionStatusMission::DvInspection => 7,
+            CarMissionStatusMission::DvEbsTest => 6,
+            CarMissionStatusMission::DvTrackdrive => 5,
+            CarMissionStatusMission::DvAutocross => 4,
+            CarMissionStatusMission::DvSkidpad => 3,
+            CarMissionStatusMission::DvAcceleration => 2,
+            CarMissionStatusMission::Manualy => 1,
+            CarMissionStatusMission::None => 0,
+            CarMissionStatusMission::_Other(x) => x,
+        }
+    }
+}
+
+/// Defined values for MissionStatus
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub enum CarMissionStatusMissionStatus {
+    MissionFinished,
+    MissionRunning,
+    MissionNotRunning,
+    _Other(u8),
+}
+
+impl From<CarMissionStatusMissionStatus> for u8 {
+    fn from(val: CarMissionStatusMissionStatus) -> u8 {
+        match val {
+            CarMissionStatusMissionStatus::MissionFinished => 2,
+            CarMissionStatusMissionStatus::MissionRunning => 1,
+            CarMissionStatusMissionStatus::MissionNotRunning => 0,
+            CarMissionStatusMissionStatus::_Other(x) => x,
+        }
+    }
+}
+
+/// Defined values for AsStatus
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub enum CarMissionStatusAsStatus {
+    Finish,
+    EmergencyBrake,
+    Driving,
+    Ready,
+    Off,
+    _Other(u8),
+}
+
+impl From<CarMissionStatusAsStatus> for u8 {
+    fn from(val: CarMissionStatusAsStatus) -> u8 {
+        match val {
+            CarMissionStatusAsStatus::Finish => 5,
+            CarMissionStatusAsStatus::EmergencyBrake => 4,
+            CarMissionStatusAsStatus::Driving => 3,
+            CarMissionStatusAsStatus::Ready => 2,
+            CarMissionStatusAsStatus::Off => 1,
+            CarMissionStatusAsStatus::_Other(x) => x,
+        }
+    }
+}
+
 
 /// Temp1
 ///
@@ -5119,6 +5402,27 @@ impl<'a> Arbitrary<'a> for Pcu {
         Pcu::new(mode).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
+/// Defined values for mode
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub enum PcuMode {
+    Pwm,
+    Rf,
+    Enables,
+    _Other(u8),
+}
+
+impl From<PcuMode> for u8 {
+    fn from(val: PcuMode) -> u8 {
+        match val {
+            PcuMode::Pwm => 0,
+            PcuMode::Rf => 1,
+            PcuMode::Enables => 2,
+            PcuMode::_Other(x) => x,
+        }
+    }
+}
+
 /// Defined values for multiplexed signal Pcu
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub enum PcuMode {
@@ -5318,6 +5622,188 @@ impl<'a> Arbitrary<'a> for CalibAck {
 /// Defined values for multiplexed signal CalibAck
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub enum CalibAckPosition {
+}
+
+
+/// PcuSwControl
+///
+/// - ID: 307 (0x133)
+/// - Size: 1 bytes
+/// - Transmitter: SW
+#[derive(Clone, Copy)]
+pub struct PcuSwControl {
+    raw: [u8; 1],
+}
+
+impl PcuSwControl {
+    pub const MESSAGE_ID: u32 = 307;
+    
+    
+    /// Construct new PcuSwControl from values
+    pub fn new(pump: bool, fan: bool) -> Result<Self, CanError> {
+        let mut res = Self { raw: [0u8; 1] };
+        res.set_pump(pump)?;
+        res.set_fan(fan)?;
+        Ok(res)
+    }
+    
+    /// Access message payload raw value
+    pub fn raw(&self) -> &[u8; 1] {
+        &self.raw
+    }
+    
+    /// pump
+    ///
+    /// - Min: 0
+    /// - Max: 1
+    /// - Unit: ""
+    /// - Receivers: VCU
+    #[inline(always)]
+    pub fn pump(&self) -> PcuSwControlPump {
+        let signal = self.raw.view_bits::<Lsb0>()[0..1].load_le::<u8>();
+        
+        match signal {
+            1 => PcuSwControlPump::On,
+            0 => PcuSwControlPump::Off,
+            _ => PcuSwControlPump::_Other(self.pump_raw()),
+        }
+    }
+    
+    /// Get raw value of pump
+    ///
+    /// - Start bit: 0
+    /// - Signal size: 1 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn pump_raw(&self) -> bool {
+        let signal = self.raw.view_bits::<Lsb0>()[0..1].load_le::<u8>();
+        
+        signal == 1
+    }
+    
+    /// Set value of pump
+    #[inline(always)]
+    pub fn set_pump(&mut self, value: bool) -> Result<(), CanError> {
+        let value = value as u8;
+        self.raw.view_bits_mut::<Lsb0>()[0..1].store_le(value);
+        Ok(())
+    }
+    
+    /// fan
+    ///
+    /// - Min: 0
+    /// - Max: 1
+    /// - Unit: ""
+    /// - Receivers: VCU
+    #[inline(always)]
+    pub fn fan(&self) -> PcuSwControlFan {
+        let signal = self.raw.view_bits::<Lsb0>()[1..2].load_le::<u8>();
+        
+        match signal {
+            1 => PcuSwControlFan::On,
+            0 => PcuSwControlFan::Off,
+            _ => PcuSwControlFan::_Other(self.fan_raw()),
+        }
+    }
+    
+    /// Get raw value of fan
+    ///
+    /// - Start bit: 1
+    /// - Signal size: 1 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn fan_raw(&self) -> bool {
+        let signal = self.raw.view_bits::<Lsb0>()[1..2].load_le::<u8>();
+        
+        signal == 1
+    }
+    
+    /// Set value of fan
+    #[inline(always)]
+    pub fn set_fan(&mut self, value: bool) -> Result<(), CanError> {
+        let value = value as u8;
+        self.raw.view_bits_mut::<Lsb0>()[1..2].store_le(value);
+        Ok(())
+    }
+    
+}
+
+impl core::convert::TryFrom<&[u8]> for PcuSwControl {
+    type Error = CanError;
+    
+    #[inline(always)]
+    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
+        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        let mut raw = [0u8; 1];
+        raw.copy_from_slice(&payload[..1]);
+        Ok(Self { raw })
+    }
+}
+
+#[cfg(feature = "debug")]
+impl core::fmt::Debug for PcuSwControl {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if f.alternate() {
+            f.debug_struct("PcuSwControl")
+                .field("pump", &self.pump())
+                .field("fan", &self.fan())
+            .finish()
+        } else {
+            f.debug_tuple("PcuSwControl").field(&self.raw).finish()
+        }
+    }
+}
+
+#[cfg(feature = "arb")]
+impl<'a> Arbitrary<'a> for PcuSwControl {
+    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
+        let pump = u.int_in_range(0..=1)? == 1;
+        let fan = u.int_in_range(0..=1)? == 1;
+        PcuSwControl::new(pump,fan).map_err(|_| arbitrary::Error::IncorrectFormat)
+    }
+}
+/// Defined values for pump
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub enum PcuSwControlPump {
+    On,
+    Off,
+    _Other(bool),
+}
+
+impl From<PcuSwControlPump> for bool {
+    fn from(val: PcuSwControlPump) -> bool {
+        match val {
+            PcuSwControlPump::On => true,
+            PcuSwControlPump::Off => false,
+            PcuSwControlPump::_Other(x) => x,
+        }
+    }
+}
+
+/// Defined values for fan
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub enum PcuSwControlFan {
+    On,
+    Off,
+    _Other(bool),
+}
+
+impl From<PcuSwControlFan> for bool {
+    fn from(val: PcuSwControlFan) -> bool {
+        match val {
+            PcuSwControlFan::On => true,
+            PcuSwControlFan::Off => false,
+            PcuSwControlFan::_Other(x) => x,
+        }
+    }
 }
 
 
