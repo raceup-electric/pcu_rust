@@ -1,6 +1,4 @@
-use embassy_stm32::gpio::{Input, Level, OutputType, Pull, Speed};
-use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm, SimplePwmChannel};
-use log::info;
+use embassy_stm32::timer::simple_pwm::SimplePwmChannel;
 use {defmt_rtt as _, panic_probe as _};
 
 pub struct PwmDualController<'a, T, const N: usize>
@@ -71,6 +69,11 @@ where
 
     pub fn disable(&mut self, level: usize) {
         self.enablement[level] = false;
+        self.update_enabled();
+    }
+
+    pub fn set_level(&mut self, level: usize, state: bool) {
+        self.enablement[level] = state;
         self.update_enabled();
     }
 

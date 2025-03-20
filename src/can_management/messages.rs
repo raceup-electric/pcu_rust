@@ -155,6 +155,12 @@ impl TanksEbs {
         Ok(res)
     }
     
+    /// Construct new TanksEBS from raw
+    pub fn new_from_raw(raw: [u8;2] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 2] {
         &self.raw
@@ -414,6 +420,12 @@ impl CarMission {
         Ok(res)
     }
     
+    /// Construct new CarMission from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 1] {
         &self.raw
@@ -558,6 +570,12 @@ impl PcuFault {
         res.set_fault_pumpr(fault_pumpr)?;
         res.set_fault_fanbattr(fault_fanbattr)?;
         res.set_fault_fanbattl(fault_fanbattl)?;
+        Ok(res)
+    }
+    
+    /// Construct new PcuFault from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     
@@ -874,6 +892,12 @@ impl Paddle {
         Ok(res)
     }
     
+    /// Construct new Paddle from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 1] {
         &self.raw
@@ -983,6 +1007,12 @@ impl Driver {
         res.set_bre_implausibility(bre_implausibility)?;
         res.set_pad_implausibility(pad_implausibility)?;
         res.set_pot_implausibility(pot_implausibility)?;
+        Ok(res)
+    }
+    
+    /// Construct new Driver from raw
+    pub fn new_from_raw(raw: [u8;4] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     
@@ -1325,6 +1355,12 @@ impl BmsLv1 {
         Ok(res)
     }
     
+    /// Construct new BmsLv1 from raw
+    pub fn new_from_raw(raw: [u8;7] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 7] {
         &self.raw
@@ -1569,6 +1605,12 @@ impl BmsLv2 {
         Ok(res)
     }
     
+    /// Construct new BmsLv2 from raw
+    pub fn new_from_raw(raw: [u8;7] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 7] {
         &self.raw
@@ -1792,6 +1834,12 @@ impl BmsHv1 {
         res.set_min_volt(min_volt)?;
         res.set_avg_volt(avg_volt)?;
         res.set_soc(soc)?;
+        Ok(res)
+    }
+    
+    /// Construct new BmsHv1 from raw
+    pub fn new_from_raw(raw: [u8;7] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     
@@ -2047,6 +2095,12 @@ impl BmsHv2 {
         Ok(res)
     }
     
+    /// Construct new BmsHv2 from raw
+    pub fn new_from_raw(raw: [u8;7] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 7] {
         &self.raw
@@ -2275,6 +2329,12 @@ impl Imu1 {
         Ok(res)
     }
     
+    /// Construct new Imu1 from raw
+    pub fn new_from_raw(raw: [u8;8] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 8] {
         &self.raw
@@ -2422,6 +2482,12 @@ impl Imu2 {
         let mut res = Self { raw: [0u8; 8] };
         res.set_acc_z(acc_z)?;
         res.set_omega_x(omega_x)?;
+        Ok(res)
+    }
+    
+    /// Construct new Imu2 from raw
+    pub fn new_from_raw(raw: [u8;8] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     
@@ -2575,6 +2641,12 @@ impl Imu3 {
         Ok(res)
     }
     
+    /// Construct new Imu3 from raw
+    pub fn new_from_raw(raw: [u8;8] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 8] {
         &self.raw
@@ -2722,6 +2794,12 @@ impl ImuCalib {
         Ok(res)
     }
     
+    /// Construct new IMUCalib from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 1] {
         &self.raw
@@ -2822,6 +2900,12 @@ impl Map {
         res.set_power(power)?;
         res.set_regen(regen)?;
         res.set_torque_rep(torque_rep)?;
+        Ok(res)
+    }
+    
+    /// Construct new Map from raw
+    pub fn new_from_raw(raw: [u8;2] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     
@@ -3012,6 +3096,12 @@ impl CarStatus {
         res.set_air2(air2)?;
         res.set_precharge(precharge)?;
         res.set_speed(speed)?;
+        Ok(res)
+    }
+    
+    /// Construct new CarStatus from raw
+    pub fn new_from_raw(raw: [u8;2] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     
@@ -3347,6 +3437,12 @@ impl CarSettings {
         res.set_front_motor_repartition(front_motor_repartition)?;
         res.set_rear_motor_repartition(rear_motor_repartition)?;
         res.set_torque_vectoring(torque_vectoring)?;
+        Ok(res)
+    }
+    
+    /// Construct new CarSettings from raw
+    pub fn new_from_raw(raw: [u8;8] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     
@@ -3737,6 +3833,12 @@ impl CheckAsb {
         Ok(res)
     }
     
+    /// Construct new CheckASB from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 1] {
         &self.raw
@@ -3853,6 +3955,12 @@ impl LapStart {
         Ok(res)
     }
     
+    /// Construct new LapStart from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 1] {
         &self.raw
@@ -3956,6 +4064,12 @@ impl CarMissionStatus {
         res.set_mission(mission)?;
         res.set_mission_status(mission_status)?;
         res.set_as_status(as_status)?;
+        Ok(res)
+    }
+    
+    /// Construct new CarMissionStatus from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     
@@ -4251,6 +4365,12 @@ impl Temp1 {
         Ok(res)
     }
     
+    /// Construct new Temp1 from raw
+    pub fn new_from_raw(raw: [u8;8] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 8] {
         &self.raw
@@ -4481,6 +4601,12 @@ impl Temp2 {
         Ok(res)
     }
     
+    /// Construct new Temp2 from raw
+    pub fn new_from_raw(raw: [u8;8] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 8] {
         &self.raw
@@ -4705,6 +4831,12 @@ impl SuspRear {
         Ok(res)
     }
     
+    /// Construct new SuspRear from raw
+    pub fn new_from_raw(raw: [u8;3] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 3] {
         &self.raw
@@ -4854,7 +4986,13 @@ impl Reserved2 {
     
     /// Construct new RESERVED2 from values
     pub fn new() -> Result<Self, CanError> {
-        let mut res = Self { raw: [0u8; 0] };
+        let res = Self { raw: [0u8; 0] };
+        Ok(res)
+    }
+    
+    /// Construct new RESERVED2 from raw
+    pub fn new_from_raw(raw: [u8;0] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     
@@ -4919,6 +5057,12 @@ impl SuspFront {
         let mut res = Self { raw: [0u8; 3] };
         res.set_susp_fr(susp_fr)?;
         res.set_susp_fl(susp_fl)?;
+        Ok(res)
+    }
+    
+    /// Construct new SuspFront from raw
+    pub fn new_from_raw(raw: [u8;3] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     
@@ -5080,6 +5224,12 @@ impl TempFrontR {
         Ok(res)
     }
     
+    /// Construct new TempFrontR from raw
+    pub fn new_from_raw(raw: [u8;3] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 3] {
         &self.raw
@@ -5219,6 +5369,12 @@ impl InvVolt {
         Ok(res)
     }
     
+    /// Construct new InvVolt from raw
+    pub fn new_from_raw(raw: [u8;2] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 2] {
         &self.raw
@@ -5333,6 +5489,12 @@ impl Pcu {
         Ok(res)
     }
     
+    /// Construct new Pcu from raw
+    pub fn new_from_raw(raw: [u8;7] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 7] {
         &self.raw
@@ -5355,6 +5517,9 @@ impl Pcu {
     
     pub fn mode(&mut self) -> Result<PcuMode, CanError> {
         match self.mode_raw() {
+            0 => Ok(PcuMode::M0(PcuModeM0{ raw: self.raw })),
+            1 => Ok(PcuMode::M1(PcuModeM1{ raw: self.raw })),
+            2 => Ok(PcuMode::M2(PcuModeM2{ raw: self.raw })),
             multiplexor => Err(CanError::InvalidMultiplexor { message_id: 304, multiplexor: multiplexor.into() }),
         }
     }
@@ -5366,6 +5531,36 @@ impl Pcu {
             return Err(CanError::ParameterOutOfRange { message_id: 304 });
         }
         self.raw.view_bits_mut::<Lsb0>()[0..2].store_le(value);
+        Ok(())
+    }
+    
+    /// Set value of mode
+    #[inline(always)]
+    pub fn set_m0(&mut self, value: PcuModeM0) -> Result<(), CanError> {
+        let b0 = BitArray::<_, LocalBits>::new(self.raw);
+        let b1 = BitArray::<_, LocalBits>::new(value.raw);
+        self.raw = b0.bitor(b1).into_inner();
+        self.set_mode(0)?;
+        Ok(())
+    }
+    
+    /// Set value of mode
+    #[inline(always)]
+    pub fn set_m1(&mut self, value: PcuModeM1) -> Result<(), CanError> {
+        let b0 = BitArray::<_, LocalBits>::new(self.raw);
+        let b1 = BitArray::<_, LocalBits>::new(value.raw);
+        self.raw = b0.bitor(b1).into_inner();
+        self.set_mode(1)?;
+        Ok(())
+    }
+    
+    /// Set value of mode
+    #[inline(always)]
+    pub fn set_m2(&mut self, value: PcuModeM2) -> Result<(), CanError> {
+        let b0 = BitArray::<_, LocalBits>::new(self.raw);
+        let b1 = BitArray::<_, LocalBits>::new(value.raw);
+        self.raw = b0.bitor(b1).into_inner();
+        self.set_mode(2)?;
         Ok(())
     }
     
@@ -5402,30 +5597,568 @@ impl<'a> Arbitrary<'a> for Pcu {
         Pcu::new(mode).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
-/// Defined values for mode
-#[derive(Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub enum PcuMode {
-    Pwm,
-    Rf,
-    Enables,
-    _Other(u8),
-}
-
-impl From<PcuMode> for u8 {
-    fn from(val: PcuMode) -> u8 {
-        match val {
-            PcuMode::Pwm => 0,
-            PcuMode::Rf => 1,
-            PcuMode::Enables => 2,
-            PcuMode::_Other(x) => x,
-        }
-    }
-}
 
 /// Defined values for multiplexed signal Pcu
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub enum PcuMode {
+    M0(PcuModeM0),
+    M1(PcuModeM1),
+    M2(PcuModeM2),
+}
+
+#[derive(Default)]
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub struct PcuModeM0 { raw: [u8; 7] }
+
+impl PcuModeM0 {
+pub fn new() -> Self { Self { raw: [0u8; 7] } }
+pub fn new_from_raw(raw: [u8; 7]) -> Self { Self { raw } }
+/// pump_enable_left
+///
+/// - Min: 0
+/// - Max: 1
+/// - Unit: "on"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn pump_enable_left(&self) -> bool {
+    self.pump_enable_left_raw()
+}
+
+/// Get raw value of pump_enable_left
+///
+/// - Start bit: 8
+/// - Signal size: 1 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn pump_enable_left_raw(&self) -> bool {
+    let signal = self.raw.view_bits::<Lsb0>()[8..9].load_le::<u8>();
+    
+    signal == 1
+}
+
+/// Set value of pump_enable_left
+#[inline(always)]
+pub fn set_pump_enable_left(&mut self, value: bool) -> Result<(), CanError> {
+    let value = value as u8;
+    self.raw.view_bits_mut::<Lsb0>()[8..9].store_le(value);
+    Ok(())
+}
+
+/// pump_speed_left
+///
+/// - Min: 0
+/// - Max: 100
+/// - Unit: "%"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn pump_speed_left(&self) -> u8 {
+    self.pump_speed_left_raw()
+}
+
+/// Get raw value of pump_speed_left
+///
+/// - Start bit: 9
+/// - Signal size: 7 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn pump_speed_left_raw(&self) -> u8 {
+    let signal = self.raw.view_bits::<Lsb0>()[9..16].load_le::<u8>();
+    
+    signal
+}
+
+/// Set value of pump_speed_left
+#[inline(always)]
+pub fn set_pump_speed_left(&mut self, value: u8) -> Result<(), CanError> {
+    #[cfg(feature = "range_checked")]
+    if value < 0_u8 || 100_u8 < value {
+        return Err(CanError::ParameterOutOfRange { message_id: 304 });
+    }
+    self.raw.view_bits_mut::<Lsb0>()[9..16].store_le(value);
+    Ok(())
+}
+
+/// pump_enable_right
+///
+/// - Min: 0
+/// - Max: 1
+/// - Unit: "on"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn pump_enable_right(&self) -> bool {
+    self.pump_enable_right_raw()
+}
+
+/// Get raw value of pump_enable_right
+///
+/// - Start bit: 16
+/// - Signal size: 1 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn pump_enable_right_raw(&self) -> bool {
+    let signal = self.raw.view_bits::<Lsb0>()[16..17].load_le::<u8>();
+    
+    signal == 1
+}
+
+/// Set value of pump_enable_right
+#[inline(always)]
+pub fn set_pump_enable_right(&mut self, value: bool) -> Result<(), CanError> {
+    let value = value as u8;
+    self.raw.view_bits_mut::<Lsb0>()[16..17].store_le(value);
+    Ok(())
+}
+
+/// pump_speed_right
+///
+/// - Min: 0
+/// - Max: 100
+/// - Unit: "%"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn pump_speed_right(&self) -> u8 {
+    self.pump_speed_right_raw()
+}
+
+/// Get raw value of pump_speed_right
+///
+/// - Start bit: 17
+/// - Signal size: 7 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn pump_speed_right_raw(&self) -> u8 {
+    let signal = self.raw.view_bits::<Lsb0>()[17..24].load_le::<u8>();
+    
+    signal
+}
+
+/// Set value of pump_speed_right
+#[inline(always)]
+pub fn set_pump_speed_right(&mut self, value: u8) -> Result<(), CanError> {
+    #[cfg(feature = "range_checked")]
+    if value < 0_u8 || 100_u8 < value {
+        return Err(CanError::ParameterOutOfRange { message_id: 304 });
+    }
+    self.raw.view_bits_mut::<Lsb0>()[17..24].store_le(value);
+    Ok(())
+}
+
+/// fanrad_enable_left
+///
+/// - Min: 0
+/// - Max: 1
+/// - Unit: "on"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn fanrad_enable_left(&self) -> bool {
+    self.fanrad_enable_left_raw()
+}
+
+/// Get raw value of fanrad_enable_left
+///
+/// - Start bit: 24
+/// - Signal size: 1 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn fanrad_enable_left_raw(&self) -> bool {
+    let signal = self.raw.view_bits::<Lsb0>()[24..25].load_le::<u8>();
+    
+    signal == 1
+}
+
+/// Set value of fanrad_enable_left
+#[inline(always)]
+pub fn set_fanrad_enable_left(&mut self, value: bool) -> Result<(), CanError> {
+    let value = value as u8;
+    self.raw.view_bits_mut::<Lsb0>()[24..25].store_le(value);
+    Ok(())
+}
+
+/// fanrad_speed_left
+///
+/// - Min: 0
+/// - Max: 100
+/// - Unit: "%"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn fanrad_speed_left(&self) -> u8 {
+    self.fanrad_speed_left_raw()
+}
+
+/// Get raw value of fanrad_speed_left
+///
+/// - Start bit: 25
+/// - Signal size: 7 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn fanrad_speed_left_raw(&self) -> u8 {
+    let signal = self.raw.view_bits::<Lsb0>()[25..32].load_le::<u8>();
+    
+    signal
+}
+
+/// Set value of fanrad_speed_left
+#[inline(always)]
+pub fn set_fanrad_speed_left(&mut self, value: u8) -> Result<(), CanError> {
+    #[cfg(feature = "range_checked")]
+    if value < 0_u8 || 100_u8 < value {
+        return Err(CanError::ParameterOutOfRange { message_id: 304 });
+    }
+    self.raw.view_bits_mut::<Lsb0>()[25..32].store_le(value);
+    Ok(())
+}
+
+/// fanrad_enable_right
+///
+/// - Min: 0
+/// - Max: 1
+/// - Unit: "on"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn fanrad_enable_right(&self) -> bool {
+    self.fanrad_enable_right_raw()
+}
+
+/// Get raw value of fanrad_enable_right
+///
+/// - Start bit: 32
+/// - Signal size: 1 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn fanrad_enable_right_raw(&self) -> bool {
+    let signal = self.raw.view_bits::<Lsb0>()[32..33].load_le::<u8>();
+    
+    signal == 1
+}
+
+/// Set value of fanrad_enable_right
+#[inline(always)]
+pub fn set_fanrad_enable_right(&mut self, value: bool) -> Result<(), CanError> {
+    let value = value as u8;
+    self.raw.view_bits_mut::<Lsb0>()[32..33].store_le(value);
+    Ok(())
+}
+
+/// fanrad_speed_right
+///
+/// - Min: 0
+/// - Max: 100
+/// - Unit: "%"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn fanrad_speed_right(&self) -> u8 {
+    self.fanrad_speed_right_raw()
+}
+
+/// Get raw value of fanrad_speed_right
+///
+/// - Start bit: 33
+/// - Signal size: 7 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn fanrad_speed_right_raw(&self) -> u8 {
+    let signal = self.raw.view_bits::<Lsb0>()[33..40].load_le::<u8>();
+    
+    signal
+}
+
+/// Set value of fanrad_speed_right
+#[inline(always)]
+pub fn set_fanrad_speed_right(&mut self, value: u8) -> Result<(), CanError> {
+    #[cfg(feature = "range_checked")]
+    if value < 0_u8 || 100_u8 < value {
+        return Err(CanError::ParameterOutOfRange { message_id: 304 });
+    }
+    self.raw.view_bits_mut::<Lsb0>()[33..40].store_le(value);
+    Ok(())
+}
+
+/// fanbatt_enable_left
+///
+/// - Min: 0
+/// - Max: 1
+/// - Unit: "on"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn fanbatt_enable_left(&self) -> bool {
+    self.fanbatt_enable_left_raw()
+}
+
+/// Get raw value of fanbatt_enable_left
+///
+/// - Start bit: 40
+/// - Signal size: 1 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn fanbatt_enable_left_raw(&self) -> bool {
+    let signal = self.raw.view_bits::<Lsb0>()[40..41].load_le::<u8>();
+    
+    signal == 1
+}
+
+/// Set value of fanbatt_enable_left
+#[inline(always)]
+pub fn set_fanbatt_enable_left(&mut self, value: bool) -> Result<(), CanError> {
+    let value = value as u8;
+    self.raw.view_bits_mut::<Lsb0>()[40..41].store_le(value);
+    Ok(())
+}
+
+/// fanbatt_speed_left
+///
+/// - Min: 0
+/// - Max: 100
+/// - Unit: "%"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn fanbatt_speed_left(&self) -> u8 {
+    self.fanbatt_speed_left_raw()
+}
+
+/// Get raw value of fanbatt_speed_left
+///
+/// - Start bit: 41
+/// - Signal size: 7 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn fanbatt_speed_left_raw(&self) -> u8 {
+    let signal = self.raw.view_bits::<Lsb0>()[41..48].load_le::<u8>();
+    
+    signal
+}
+
+/// Set value of fanbatt_speed_left
+#[inline(always)]
+pub fn set_fanbatt_speed_left(&mut self, value: u8) -> Result<(), CanError> {
+    #[cfg(feature = "range_checked")]
+    if value < 0_u8 || 100_u8 < value {
+        return Err(CanError::ParameterOutOfRange { message_id: 304 });
+    }
+    self.raw.view_bits_mut::<Lsb0>()[41..48].store_le(value);
+    Ok(())
+}
+
+/// fanbatt_enable_right
+///
+/// - Min: 0
+/// - Max: 1
+/// - Unit: "on"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn fanbatt_enable_right(&self) -> bool {
+    self.fanbatt_enable_right_raw()
+}
+
+/// Get raw value of fanbatt_enable_right
+///
+/// - Start bit: 48
+/// - Signal size: 1 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn fanbatt_enable_right_raw(&self) -> bool {
+    let signal = self.raw.view_bits::<Lsb0>()[48..49].load_le::<u8>();
+    
+    signal == 1
+}
+
+/// Set value of fanbatt_enable_right
+#[inline(always)]
+pub fn set_fanbatt_enable_right(&mut self, value: bool) -> Result<(), CanError> {
+    let value = value as u8;
+    self.raw.view_bits_mut::<Lsb0>()[48..49].store_le(value);
+    Ok(())
+}
+
+/// fanbatt_speed_right
+///
+/// - Min: 0
+/// - Max: 100
+/// - Unit: "%"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn fanbatt_speed_right(&self) -> u8 {
+    self.fanbatt_speed_right_raw()
+}
+
+/// Get raw value of fanbatt_speed_right
+///
+/// - Start bit: 49
+/// - Signal size: 7 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn fanbatt_speed_right_raw(&self) -> u8 {
+    let signal = self.raw.view_bits::<Lsb0>()[49..56].load_le::<u8>();
+    
+    signal
+}
+
+/// Set value of fanbatt_speed_right
+#[inline(always)]
+pub fn set_fanbatt_speed_right(&mut self, value: u8) -> Result<(), CanError> {
+    #[cfg(feature = "range_checked")]
+    if value < 0_u8 || 100_u8 < value {
+        return Err(CanError::ParameterOutOfRange { message_id: 304 });
+    }
+    self.raw.view_bits_mut::<Lsb0>()[49..56].store_le(value);
+    Ok(())
+}
+
+}
+
+#[derive(Default)]
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub struct PcuModeM1 { raw: [u8; 7] }
+
+impl PcuModeM1 {
+pub fn new() -> Self { Self { raw: [0u8; 7] } }
+pub fn new_from_raw(raw: [u8; 7]) -> Self { Self { raw } }
+/// rf
+///
+/// - Min: 0
+/// - Max: 1
+/// - Unit: "on"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn rf(&self) -> bool {
+    self.rf_raw()
+}
+
+/// Get raw value of rf
+///
+/// - Start bit: 2
+/// - Signal size: 1 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn rf_raw(&self) -> bool {
+    let signal = self.raw.view_bits::<Lsb0>()[2..3].load_le::<u8>();
+    
+    signal == 1
+}
+
+/// Set value of rf
+#[inline(always)]
+pub fn set_rf(&mut self, value: bool) -> Result<(), CanError> {
+    let value = value as u8;
+    self.raw.view_bits_mut::<Lsb0>()[2..3].store_le(value);
+    Ok(())
+}
+
+}
+
+#[derive(Default)]
+#[cfg_attr(feature = "debug", derive(Debug))]
+pub struct PcuModeM2 { raw: [u8; 7] }
+
+impl PcuModeM2 {
+pub fn new() -> Self { Self { raw: [0u8; 7] } }
+pub fn new_from_raw(raw: [u8; 7]) -> Self { Self { raw } }
+/// enable_dv
+///
+/// - Min: 0
+/// - Max: 1
+/// - Unit: "on"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn enable_dv(&self) -> bool {
+    self.enable_dv_raw()
+}
+
+/// Get raw value of enable_dv
+///
+/// - Start bit: 2
+/// - Signal size: 1 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn enable_dv_raw(&self) -> bool {
+    let signal = self.raw.view_bits::<Lsb0>()[2..3].load_le::<u8>();
+    
+    signal == 1
+}
+
+/// Set value of enable_dv
+#[inline(always)]
+pub fn set_enable_dv(&mut self, value: bool) -> Result<(), CanError> {
+    let value = value as u8;
+    self.raw.view_bits_mut::<Lsb0>()[2..3].store_le(value);
+    Ok(())
+}
+
+/// enable_embedded
+///
+/// - Min: 0
+/// - Max: 1
+/// - Unit: "on"
+/// - Receivers: Vector__XXX
+#[inline(always)]
+pub fn enable_embedded(&self) -> bool {
+    self.enable_embedded_raw()
+}
+
+/// Get raw value of enable_embedded
+///
+/// - Start bit: 3
+/// - Signal size: 1 bits
+/// - Factor: 1
+/// - Offset: 0
+/// - Byte order: LittleEndian
+/// - Value type: Unsigned
+#[inline(always)]
+pub fn enable_embedded_raw(&self) -> bool {
+    let signal = self.raw.view_bits::<Lsb0>()[3..4].load_le::<u8>();
+    
+    signal == 1
+}
+
+/// Set value of enable_embedded
+#[inline(always)]
+pub fn set_enable_embedded(&mut self, value: bool) -> Result<(), CanError> {
+    let value = value as u8;
+    self.raw.view_bits_mut::<Lsb0>()[3..4].store_le(value);
+    Ok(())
+}
+
 }
 
 
@@ -5452,9 +6185,28 @@ impl Calib {
         Ok(res)
     }
     
+    /// Construct new Calib from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 1] {
         &self.raw
+    }
+    
+    /// position
+    ///
+    /// Set calibration of rest value (0) or 100% (1)
+    ///
+    /// - Min: 0
+    /// - Max: 1
+    /// - Unit: "high"
+    /// - Receivers: ATC
+    #[inline(always)]
+    pub fn position(&self) -> u8 {
+        self.position_raw()
     }
     
     /// Get raw value of position
@@ -5472,14 +6224,9 @@ impl Calib {
         signal
     }
     
-    pub fn position(&mut self) -> Result<CalibPosition, CanError> {
-        match self.position_raw() {
-            multiplexor => Err(CanError::InvalidMultiplexor { message_id: 305, multiplexor: multiplexor.into() }),
-        }
-    }
     /// Set value of position
     #[inline(always)]
-    fn set_position(&mut self, value: u8) -> Result<(), CanError> {
+    pub fn set_position(&mut self, value: u8) -> Result<(), CanError> {
         #[cfg(feature = "range_checked")]
         if value < 0_u8 || 1_u8 < value {
             return Err(CanError::ParameterOutOfRange { message_id: 305 });
@@ -5507,6 +6254,7 @@ impl core::fmt::Debug for Calib {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if f.alternate() {
             f.debug_struct("Calib")
+                .field("position", &self.position())
             .finish()
         } else {
             f.debug_tuple("Calib").field(&self.raw).finish()
@@ -5521,11 +6269,6 @@ impl<'a> Arbitrary<'a> for Calib {
         Calib::new(position).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
-/// Defined values for multiplexed signal Calib
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub enum CalibPosition {
-}
-
 
 /// CalibAck
 ///
@@ -5550,9 +6293,26 @@ impl CalibAck {
         Ok(res)
     }
     
+    /// Construct new CalibAck from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 1] {
         &self.raw
+    }
+    
+    /// position
+    ///
+    /// - Min: 0
+    /// - Max: 1
+    /// - Unit: "high"
+    /// - Receivers: SW
+    #[inline(always)]
+    pub fn position(&self) -> u8 {
+        self.position_raw()
     }
     
     /// Get raw value of position
@@ -5570,14 +6330,9 @@ impl CalibAck {
         signal
     }
     
-    pub fn position(&mut self) -> Result<CalibAckPosition, CanError> {
-        match self.position_raw() {
-            multiplexor => Err(CanError::InvalidMultiplexor { message_id: 306, multiplexor: multiplexor.into() }),
-        }
-    }
     /// Set value of position
     #[inline(always)]
-    fn set_position(&mut self, value: u8) -> Result<(), CanError> {
+    pub fn set_position(&mut self, value: u8) -> Result<(), CanError> {
         #[cfg(feature = "range_checked")]
         if value < 0_u8 || 1_u8 < value {
             return Err(CanError::ParameterOutOfRange { message_id: 306 });
@@ -5605,6 +6360,7 @@ impl core::fmt::Debug for CalibAck {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if f.alternate() {
             f.debug_struct("CalibAck")
+                .field("position", &self.position())
             .finish()
         } else {
             f.debug_tuple("CalibAck").field(&self.raw).finish()
@@ -5619,11 +6375,6 @@ impl<'a> Arbitrary<'a> for CalibAck {
         CalibAck::new(position).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
-/// Defined values for multiplexed signal CalibAck
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub enum CalibAckPosition {
-}
-
 
 /// PcuSwControl
 ///
@@ -5644,6 +6395,12 @@ impl PcuSwControl {
         let mut res = Self { raw: [0u8; 1] };
         res.set_pump(pump)?;
         res.set_fan(fan)?;
+        Ok(res)
+    }
+    
+    /// Construct new PcuSwControl from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     
@@ -5828,6 +6585,12 @@ impl PcuRfAck {
         Ok(res)
     }
     
+    /// Construct new PcuRfAck from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 1] {
         &self.raw
@@ -5922,6 +6685,12 @@ impl Lem {
     pub fn new(current: f32) -> Result<Self, CanError> {
         let mut res = Self { raw: [0u8; 8] };
         res.set_current(current)?;
+        Ok(res)
+    }
+    
+    /// Construct new Lem from raw
+    pub fn new_from_raw(raw: [u8;8] ) -> Result<Self, CanError> {
+        let res = Self { raw };
         Ok(res)
     }
     

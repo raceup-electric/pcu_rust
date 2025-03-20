@@ -43,9 +43,9 @@ assign_resources! {
 
     pwm: Pwm {
         pwm_fanradl: PB10,
-        fanradl_enable: PC1,
+        enable_fanradl: PC1,
         pwm_fanradr: PB11,
-        fanradr_enable: PC2,
+        enable_fanradr: PC2,
         pwm_fanbattl: PC7,
         enable_fanbattl: PB5,
         pwm_fanbattr: PC6,
@@ -54,6 +54,9 @@ assign_resources! {
         enable_pumpl: PC3,
         pwm_pumpr: PB6,
         enable_pumpr: PB8,
+        timer_fanrad: TIM2,
+        timer_fanbatt: TIM3,
+        timer_pump: TIM4,
     }
 
     enables: Enables {
