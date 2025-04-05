@@ -84,6 +84,11 @@ async fn main(_spawner: Spawner) {
     let executor = EXECUTOR_LOW.init(Executor::new());
     executor.run(|spawner| {
         unwrap!(spawner.spawn(task_senses(r.senses)));
+        unwrap!(spawner.spawn(task_enables(r.enables)));
+        unwrap!(spawner.spawn(pwm(r.pwm)));
+        unwrap!(spawner.spawn(read_can(_can_rx)));
+        unwrap!(spawner.spawn(write_can(_can_tx)));
+        unwrap!(spawner.spawn(fault_detection(r.faults)));
     });
 }
 
