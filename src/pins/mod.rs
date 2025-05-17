@@ -1,37 +1,28 @@
 use assign_resources::assign_resources;
-use embassy_stm32::peripherals;
-
+use embassy_stm32::{peripherals, Peri};
 
 assign_resources! {
+
     faults: Faults {
-        fault_12v: PC8,
-        exti_12v: EXTI8,
-        fault_dv: PB14, // TODO: scambiare nel pcb 12v_enable e dv_fault
-        exti_dv: EXTI14,
-        fault_24v: PC10,
-        exti_24v: EXTI10,
+        fault_dv: PA9,
+        fault_24v: PC8,
         fault_pumpl: PC15,
-        exti_pumpl: EXTI15,
         fault_pumpr: PB9,
-        exti_pumpr: EXTI9,
-        fault_fanbattl: PB4,
-        exti_fanbattl: EXTI4,
+        fault_fanbattl: PB15,
         fault_fanbattr: PD2,
-        exti_fanbattr: EXTI2,
     }
 
     senses: Senses {
-        sense_12v: PA0,
-        sense_dv: PA1,
-        sense_24v: PA2,
-        sense_pumpl: PA3,
-        sense_pumpr: PA4,
-        sense_fanbattl: PA5,
-        sense_fanbattr: PA6,
-        sense_fanradl: PA7,
-        sense_fanradr: PB0,
-        sense_emb: PB1,
-        steeract_sense: PC4,
+        sense_dv: PB0,
+        sense_24v: PC4,
+        sense_pumpl: PA6,
+        sense_pumpr: PA7,
+        sense_fanbattl: PA4,
+        sense_fanbattr: PA5,
+        sense_fanradl: PA3,
+        sense_fanradr: PA2,
+        sense_emb: PA1,
+        steeract_sense: PA0,
         adc_1: ADC1,
         adc_2: ADC2,
         adc_3: ADC3,
@@ -42,9 +33,9 @@ assign_resources! {
     }
 
     pwm: Pwm {
-        pwm_fanradl: PB10,
+        pwm_fanradl: PB11,
         enable_fanradl: PC1,
-        pwm_fanradr: PB11,
+        pwm_fanradr: PB10,
         enable_fanradr: PC2,
         pwm_fanbattl: PC7,
         enable_fanbattl: PB5,
@@ -63,9 +54,8 @@ assign_resources! {
         enable_ef: PC14,
         enable_rf: PC13,
         enable_emb: PC0,
-        enable_dv: PA15,
-        enable_12v: PA9,
-        enable_24v: PC5,
+        enable_dv: PA8,
+        enable_24v: PB14,
     }
 
     usb: Usb {

@@ -6,7 +6,10 @@ use embassy_stm32::can::{
     Can, Fifo, Rx0InterruptHandler, Rx1InterruptHandler, SceInterruptHandler, TxInterruptHandler
 };
 
-use embassy_stm32::peripherals::{CAN1, CAN2, PA11, PA12, PB12, PB13};
+use embassy_stm32::{
+    peripherals::{ CAN1, CAN2, PA11, PA12, PB12, PB13},
+    Peri
+};
 use embassy_time::Duration;
 
 bind_interrupts!(struct Irqs1 {
@@ -41,7 +44,7 @@ pub struct CanController<'a> {
 impl<'a> CanController<'a>{
     async fn new(mut controller: CanController<'a>, baudrate: u32) -> Self {
         controller.can.modify_config()
-            .set_loopback(true) // Receive own frames
+            .set_loopback(false) // Receive own frames
             .set_bitrate(baudrate);
         
         if !controller.is_can2 {controller.can.modify_filters().enable_bank(0, Fifo::Fifo0, Mask32::accept_all());}
@@ -49,7 +52,7 @@ impl<'a> CanController<'a>{
         controller
     }
 
-    pub async fn _new_can1(peri: CAN1, rx: PA11, tx: PA12, baudrate: u32) -> Self {
+    pub async fn _new_can1(peri: Peri<'static, CAN1> , rx: Peri<'static, PA11>, tx: Peri<'static, PA12>, baudrate: u32) -> Self {
         let controller = CanController {
             can: Can::new(
                 peri,
@@ -63,7 +66,7 @@ impl<'a> CanController<'a>{
         Self::new(controller, baudrate).await
     }
 
-    pub async fn new_can2(peri: CAN2, rx: PB12, tx: PB13, baudrate: u32, peri1: CAN1, rx1: PA11, tx1: PA12) -> Self {
+    pub async fn new_can2(peri: Peri<'static, CAN2>, rx: Peri<'static, PB12>, tx: Peri< 'static, PB13>, baudrate: u32, peri1: Peri<'static, CAN1>, rx1: Peri<'static, PA11>, tx1: Peri<'static, PA12> ) -> Self {
         let mut can1 = Can::new(peri1, rx1, tx1, Irqs1);
  
         let controller = CanController {
@@ -77,7 +80,7 @@ impl<'a> CanController<'a>{
         can1.sleep().await;
         drop(can1);
 
-        Self::new(controller, baudrate).await        
+        Self::new(controller, baudrate).await
     }
 
     pub async fn write(&mut self, frame: &CanFrame) -> Result<(), CanError> {

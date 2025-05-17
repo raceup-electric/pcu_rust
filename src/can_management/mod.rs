@@ -1,6 +1,7 @@
 pub mod frame;
 pub mod can_controller;
 pub use can_controller::{CanError,CanController};
+#[allow(dead_code)]
 pub mod messages;
 use defmt::info;
 pub use frame::CanFrame;

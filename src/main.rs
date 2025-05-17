@@ -9,7 +9,7 @@ use embassy_stm32::{
     adc::Adc,
     can::{filter::*, CanRx, CanTx, Fifo, StandardId},
     exti::*,
-    gpio::{Level, Output, OutputType, Pull, Speed},
+    gpio::{Input, Level, Output, OutputType, Pull, Speed},
     time::hz,
     timer::simple_pwm::{PwmPin, SimplePwm},
 };
@@ -102,14 +102,14 @@ fn percent_to_duty(val: u8) -> u16 {
 
 #[embassy_executor::task]
 async fn pwm(pins: Pwm) {
-    let fanradl = PwmPin::new_ch3(pins.pwm_fanradl, OutputType::PushPull);
-    let fanradr = PwmPin::new_ch4(pins.pwm_fanradr, OutputType::PushPull);
+    let fanradl = PwmPin::new_ch4(pins.pwm_fanradl, OutputType::PushPull);
+    let fanradr = PwmPin::new_ch3(pins.pwm_fanradr, OutputType::PushPull);
     let fanrad_pwm_driver = SimplePwm::new(
         pins.timer_fanrad,
         None,
         None,
-        Some(fanradl),
         Some(fanradr),
+        Some(fanradl),
         hz(25_000),
         Default::default(),
     );
@@ -206,7 +206,6 @@ async fn task_enables(enables: Enables) {
     let mut enabe_rf = Output::new(enables.enable_rf, Level::Low, Speed::Low);
     let mut enable_emb = Output::new(enables.enable_emb, Level::Low, Speed::Low);
     let mut enable_dv = Output::new(enables.enable_dv, Level::Low, Speed::Low);
-    let _enable_12v = Output::new(enables.enable_12v, Level::High, Speed::Low);
     let _enable_24v = Output::new(enables.enable_24v, Level::High, Speed::Low);
     match select(CAN_RF_CHANNEL.wait(), CAN_ENABLES_CHANNEL.wait()).await {
         Either::First(mes) => {
@@ -275,13 +274,12 @@ fn pad_array<const N: usize, const P: usize>(input: &[u8; N], pad_value: u8) -> 
 #[embassy_executor::task]
 async fn fault_detection(faults: Faults) {
     let faults = [
-        ExtiInput::new(faults.fault_12v, faults.exti_12v, Pull::None),
-        ExtiInput::new(faults.fault_dv, faults.exti_dv, Pull::None),
-        ExtiInput::new(faults.fault_24v, faults.exti_24v, Pull::None),
-        ExtiInput::new(faults.fault_pumpl, faults.exti_pumpl, Pull::None),
-        ExtiInput::new(faults.fault_pumpr, faults.exti_pumpr, Pull::None),
-        ExtiInput::new(faults.fault_fanbattl, faults.exti_fanbattl, Pull::None),
-        ExtiInput::new(faults.fault_fanbattr, faults.exti_fanbattr, Pull::None),
+        Input::new(faults.fault_dv, Pull::None),
+        Input::new(faults.fault_24v, Pull::None),
+        Input::new(faults.fault_pumpl, Pull::None),
+        Input::new(faults.fault_pumpr, Pull::None),
+        Input::new(faults.fault_fanbattl, Pull::None),
+        Input::new(faults.fault_fanbattr, Pull::None),
     ];
 
     let mut ticker = embassy_time::Ticker::every(Duration::from_millis(5000));
@@ -321,17 +319,16 @@ async fn task_senses(mut senses: Senses) {
     let mut adc_3 = Adc::new(senses.adc_3);
 
     loop {
-        let _val_12v = switch_texas(adc_1.blocking_read(&mut senses.sense_12v));
-        let _val_dv = switch_texas(adc_3.blocking_read(&mut senses.sense_dv));
-        let _val_24v = switch_texas(adc_3.blocking_read(&mut senses.sense_24v));
-        let _val_pumpl = switch_texas(adc_2.blocking_read(&mut senses.sense_pumpl));
-        let _val_pumpr = switch_texas(adc_2.blocking_read(&mut senses.sense_pumpr));
+        let _val_dv = switch_texas(adc_1.blocking_read(&mut senses.sense_dv));
+        let _val_24v = switch_texas(adc_1.blocking_read(&mut senses.sense_24v));
+        let _val_pumpl = switch_texas(adc_1.blocking_read(&mut senses.sense_pumpl));
+        let _val_pumpr = switch_texas(adc_1.blocking_read(&mut senses.sense_pumpr));
         let _val_fanbattl = switch_texas(adc_2.blocking_read(&mut senses.sense_fanbattl));
-        let _val_fanbattr = switch_texas(adc_1.blocking_read(&mut senses.sense_fanbattr));
-        let _val_fanradl = switch_infineon(adc_1.blocking_read(&mut senses.sense_fanradl));
-        let _val_fanradr = switch_infineon(adc_1.blocking_read(&mut senses.sense_fanradr));
-        let _val_emb = switch_infineon(adc_1.blocking_read(&mut senses.sense_emb));
-        let _val_steeract = switch_infineon(adc_1.blocking_read(&mut senses.steeract_sense));
+        let _val_fanbattr = switch_texas(adc_2.blocking_read(&mut senses.sense_fanbattr));
+        let _val_fanradl = switch_infineon(adc_2.blocking_read(&mut senses.sense_fanradl));
+        let _val_fanradr = switch_infineon(adc_3.blocking_read(&mut senses.sense_fanradr));
+        let _val_emb = switch_infineon(adc_3.blocking_read(&mut senses.sense_emb));
+        let _val_steeract = switch_infineon(adc_2.blocking_read(&mut senses.steeract_sense));
         embassy_time::Timer::after_millis(5000).await;
     }
 }
