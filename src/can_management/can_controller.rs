@@ -1,5 +1,3 @@
-pub use super::CanFrame;
-
 use embassy_stm32::bind_interrupts;
 use embassy_stm32::can::filter::Mask32;
 use embassy_stm32::can::{
@@ -10,7 +8,6 @@ use embassy_stm32::{
     peripherals::{ CAN1, CAN2, PA11, PA12, PB12, PB13},
     Peri
 };
-use embassy_time::Duration;
 
 bind_interrupts!(struct Irqs1 {
     CAN1_RX0 => Rx0InterruptHandler<CAN1>;
@@ -26,17 +23,8 @@ bind_interrupts!(struct Irqs2 {
     CAN2_TX => TxInterruptHandler<CAN2>;
 });
 
-
-#[derive(Debug)]
-pub enum CanError {
-    NoItem,
-    Timeout,
-    WriteError,
-}
-
 pub struct CanController<'a> {
     pub can: Can<'a>,
-    pub tx_frame: Option<CanFrame>,
     pub is_can2: bool
 }
 
@@ -60,7 +48,6 @@ impl<'a> CanController<'a>{
                 tx,
                 Irqs1
             ),
-            tx_frame: None,
             is_can2: false
         };
         Self::new(controller, baudrate).await
@@ -71,7 +58,6 @@ impl<'a> CanController<'a>{
  
         let controller = CanController {
             can: Can::new(peri, rx, tx, Irqs2),
-            tx_frame: None,
             is_can2: true
         };
 
@@ -83,52 +69,4 @@ impl<'a> CanController<'a>{
         Self::new(controller, baudrate).await
     }
 
-    pub async fn write(&mut self, frame: &CanFrame) -> Result<(), CanError> {
-        let mut attempts: u8 = 0;
-
-        while (self.tx_frame.is_some()) && (attempts < 5) {
-            embassy_time::Timer::after(Duration::from_millis(10)).await;
-            attempts = attempts.wrapping_add(1);
-        }
-
-        if attempts >= 5 {
-            return Err(CanError::Timeout)
-        }
-
-        let new_frame = frame.clone();
-
-        self.tx_frame = Some(new_frame);
-
-        attempts = 0;
-
-        while attempts < 4 {
-            if let Some(ref tx_frame) = self.tx_frame {
-                match self.can.try_write(&tx_frame.frame()) {
-                    Ok(_) => {
-                        self.tx_frame = None;
-                        return Ok(())
-                    }
-                    Err(_) => {
-                        attempts = attempts.wrapping_add(1);
-                    }
-                }
-            }
-        }
-        self.tx_frame = None;
-        Err(CanError::WriteError)
-    } 
-
-    pub async fn read(&mut self) -> Result<CanFrame, CanError> {
-        let envelope = self.can.try_read();
-        match envelope {
-            Ok(_) => {
-                let frame = CanFrame::from_envelope(envelope.unwrap());
-                return Ok(frame);        
-            }
-
-            Err(_) => {
-                return Err(CanError::NoItem);
-            }
-        }
-    }
 }

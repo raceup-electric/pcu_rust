@@ -8,7 +8,6 @@ use embassy_futures::select::*;
 use embassy_stm32::{
     adc::Adc,
     can::{filter::*, CanRx, CanTx, Fifo, StandardId},
-    exti::*,
     gpio::{Input, Level, Output, OutputType, Pull, Speed},
     time::hz,
     timer::simple_pwm::{PwmPin, SimplePwm},
@@ -274,12 +273,12 @@ fn pad_array<const N: usize, const P: usize>(input: &[u8; N], pad_value: u8) -> 
 #[embassy_executor::task]
 async fn fault_detection(faults: Faults) {
     let faults = [
-        Input::new(faults.fault_dv, Pull::None),
-        Input::new(faults.fault_24v, Pull::None),
-        Input::new(faults.fault_pumpl, Pull::None),
-        Input::new(faults.fault_pumpr, Pull::None),
-        Input::new(faults.fault_fanbattl, Pull::None),
-        Input::new(faults.fault_fanbattr, Pull::None),
+        Input::new(faults.fault_dv, Pull::Down),
+        Input::new(faults.fault_24v, Pull::Down),
+        Input::new(faults.fault_pumpl, Pull::Down),
+        Input::new(faults.fault_pumpr, Pull::Down),
+        Input::new(faults.fault_fanbattl, Pull::Down),
+        Input::new(faults.fault_fanbattr, Pull::Down),
     ];
 
     let mut ticker = embassy_time::Ticker::every(Duration::from_millis(5000));

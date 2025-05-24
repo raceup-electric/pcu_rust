@@ -57,16 +57,19 @@ where
         self.update_debug_pin()
     }
 
+    #[allow(dead_code)]
     pub fn set_duty(&mut self, duty_cyle: u16) {
         self.set_duty_left(duty_cyle);
         self.set_duty_right(duty_cyle);
     }
 
+    #[allow(dead_code)]
     pub fn enable(&mut self, level: usize) {
         self.enablement[level] = true;
         self.update_enabled();
     }
 
+    #[allow(dead_code)]
     pub fn disable(&mut self, level: usize) {
         self.enablement[level] = false;
         self.update_enabled();
