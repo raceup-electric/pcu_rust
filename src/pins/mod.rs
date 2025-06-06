@@ -1,5 +1,5 @@
 use assign_resources::assign_resources;
-use embassy_stm32::{peripherals, Peri};
+use embassy_stm32::peripherals;
 
 assign_resources! {
 

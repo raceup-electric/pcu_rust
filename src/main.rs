@@ -13,7 +13,7 @@ use embassy_stm32::{
     timer::simple_pwm::{PwmPin, SimplePwm},
 };
 use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal,
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex, signal::Signal,
 };
 use embassy_time::Duration;
 
@@ -34,7 +34,10 @@ static CAN_RF_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM1> = Signa
 static CAN_ENABLES_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM2> = Signal::new();
 static CAN_DRIVER_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 
+static CAN: StaticCell<Mutex<CriticalSectionRawMutex, CanController>> = StaticCell::new();
 static CAN_WRITER: Channel<CriticalSectionRawMutex, (u16, [u8; 8]), 20> = Channel::new();
+
+static DEBUG_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -53,40 +56,42 @@ async fn main(_spawner: Spawner) {
         usb_peripherals.usb_plus,
     )
     .await;
-    can.can.modify_filters().enable_bank(
-        0,
-        Fifo::Fifo0,
-        BankConfig::List16([
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
-                can_2::Driver::MESSAGE_ID as u16
-            ))),
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-        ]),
-    );
-    can.can.modify_filters().enable_bank(
-        0,
-        Fifo::Fifo1,
-        BankConfig::List16([
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
-                can_2::Pcu::MESSAGE_ID as u16
-            ))),
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-        ]),
-    );
-
-    let (_can_tx, _can_rx) = can.can.split();
+    let can_mutex = Mutex::new(can);
+    let can = StaticCell::init(&CAN, can_mutex);
+    // can.can.modify_filters().enable_bank(
+    //     0,
+    //     Fifo::Fifo0,
+    //     BankConfig::List16([
+    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
+    //             can_2::Driver::MESSAGE_ID as u16
+    //         ))),
+    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+    //     ]),
+    // );
+    // can.can.modify_filters().enable_bank(
+    //     0,
+    //     Fifo::Fifo1,
+    //     BankConfig::List16([
+    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
+    //             can_2::Pcu::MESSAGE_ID as u16
+    //         ))),
+    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+    //     ]),
+    // );
+    //
+    // let (_can_tx, _can_rx) = can.can.split();
 
     let executor = EXECUTOR_LOW.init(Executor::new());
     executor.run(|spawner| {
         unwrap!(spawner.spawn(task_senses(r.senses)));
         unwrap!(spawner.spawn(task_enables(r.enables)));
         unwrap!(spawner.spawn(pwm(r.pwm)));
-        unwrap!(spawner.spawn(read_can(_can_rx)));
-        unwrap!(spawner.spawn(write_can(_can_tx)));
+        unwrap!(spawner.spawn(read_can(can)));
+        unwrap!(spawner.spawn(write_can(can)));
         unwrap!(spawner.spawn(fault_detection(r.faults)));
     });
 }
@@ -192,10 +197,7 @@ async fn pwm(pins: Pwm) {
         // pump
         pwm_pump.set_duty_left(percent_to_duty(message.pump_speed_left()));
         pwm_pump.set_duty_right(percent_to_duty(message.pump_speed_right()));
-        pwm_pump.set_level(
-            0,
-            message.pump_enable_left() || message.pump_enable_right(),
-        );
+        pwm_pump.set_level(0, message.pump_enable_left() || message.pump_enable_right());
     }
 }
 
@@ -205,42 +207,53 @@ async fn task_enables(enables: Enables) {
     let mut enabe_rf = Output::new(enables.enable_rf, Level::Low, Speed::Low);
     let mut enable_emb = Output::new(enables.enable_emb, Level::Low, Speed::Low);
     let mut enable_dv = Output::new(enables.enable_dv, Level::Low, Speed::Low);
-    let _enable_24v = Output::new(enables.enable_24v, Level::High, Speed::Low);
-    match select(CAN_RF_CHANNEL.wait(), CAN_ENABLES_CHANNEL.wait()).await {
-        Either::First(mes) => {
-            enabe_rf.set_level(if mes.rf() { Level::High } else { Level::Low });
-            let message = can_2::PcuRfAck::new(enabe_rf.is_set_high());
-            if let Ok(some) = message {
-                CAN_WRITER.send((
-                    can_2::PcuRfAck::MESSAGE_ID as u16,
-                    pad_array::<1, 8>(some.raw(), 0),
-                )).await;
+    let mut _enable_24v = Output::new(enables.enable_24v, Level::High, Speed::Low);
+    // loop {
+    //     let a = DEBUG_CHANNEL.wait().await;
+    //     if a {
+    //         _enable_24v.set_high();
+    //     } else {
+    //         _enable_24v.set_low();
+    //     }
+    // }
+    loop {
+        match select(CAN_RF_CHANNEL.wait(), CAN_ENABLES_CHANNEL.wait()).await {
+            Either::First(mes) => {
+                enabe_rf.set_level(if mes.rf() { Level::High } else { Level::Low });
+                let message = can_2::PcuRfAck::new(enabe_rf.is_set_high());
+                if let Ok(some) = message {
+                    CAN_WRITER
+                        .send((
+                            can_2::PcuRfAck::MESSAGE_ID as u16,
+                            pad_array::<1, 8>(some.raw(), 0),
+                        ))
+                        .await;
+                }
             }
-        }
-        Either::Second(mes) => {
-            enable_emb.set_level(if mes.enable_embedded() {
-                Level::High
-            } else {
-                Level::Low
-            });
-            enable_dv.set_level(if mes.enable_embedded() {
-                Level::High
-            } else {
-                Level::Low
-            });
+            Either::Second(mes) => {
+                enable_emb.set_level(if mes.enable_embedded() {
+                    Level::High
+                } else {
+                    Level::Low
+                });
+                enable_dv.set_level(if mes.enable_embedded() {
+                    Level::High
+                } else {
+                    Level::Low
+                });
+            }
         }
     }
 }
 
 #[repr(usize)]
 enum FaultEnum {
-    V12 = 0,
-    Dv = 1,
-    V24 = 2,
-    Pumpl = 3,
-    Pumpr = 4,
-    Fanbattl = 5,
-    Fanbattr = 6,
+    Dv = 0,
+    V24 = 1,
+    Pumpl = 2,
+    Pumpr = 3,
+    Fanbattl = 4,
+    Fanbattr = 5,
 }
 
 impl<T> Index<FaultEnum> for [T] {
@@ -281,12 +294,14 @@ async fn fault_detection(faults: Faults) {
         Input::new(faults.fault_fanbattr, Pull::Down),
     ];
 
-    let mut ticker = embassy_time::Ticker::every(Duration::from_millis(5000));
+    let mut ticker = embassy_time::Ticker::every(Duration::from_millis(500));
 
+    let mut a = false;
     loop {
+        // DEBUG_CHANNEL.signal(a);
+        // a = !a;
         ticker.next().await;
         let message = can_2::PcuFault::new(
-            faults[FaultEnum::V12].is_high(),
             faults[FaultEnum::Dv].is_high(),
             faults[FaultEnum::V24].is_high(),
             faults[FaultEnum::Pumpl].is_high(),
@@ -295,10 +310,12 @@ async fn fault_detection(faults: Faults) {
             faults[FaultEnum::Fanbattr].is_high(),
         );
         if let Ok(mes) = message {
-            CAN_WRITER.send((
-                can_2::PcuFault::MESSAGE_ID as u16,
-                pad_array::<1, 8>(mes.raw(), 0),
-            )).await;
+            CAN_WRITER
+                .send((
+                    can_2::PcuFault::MESSAGE_ID as u16,
+                    pad_array::<1, 8>(mes.raw(), 0),
+                ))
+                .await;
         }
     }
 }
@@ -333,43 +350,62 @@ async fn task_senses(mut senses: Senses) {
 }
 
 #[embassy_executor::task]
-async fn read_can(mut rx: CanRx<'static>) {
+async fn read_can(can: &'static Mutex<CriticalSectionRawMutex, CanController<'static>>) {
+    let mut a = false;
     loop {
-        let envelope = unwrap!(rx.read().await);
-        let frame = CanFrame::from_envelope(envelope);
-        let message =
-            can_2::Messages::from_can_message(frame.id().into(), frame._bytes().as_slice()).ok();
-        if message.is_some() {
-            let message = unwrap!(message);
-            match message {
-                can_2::Messages::Pcu(mes) => match mes.mode_raw() {
-                    0 => {
-                        CAN_PWM_CHANNEL.signal(can_2::PcuModeM0::new_from_raw(*mes.raw()));
-                    }
-                    1 => {
-                        CAN_RF_CHANNEL.signal(can_2::PcuModeM1::new_from_raw(*mes.raw()));
-                    }
-                    2 => {
-                        CAN_ENABLES_CHANNEL.signal(can_2::PcuModeM2::new_from_raw(*mes.raw()));
+        let mut can_data = can.lock().await;
+        if let Ok(frame) = can_data.read().await {
+            let message =
+                can_2::Messages::from_can_message(u32::from(frame.id()), frame._bytes().as_slice())
+                    .ok();
+            if message.is_some() {
+                let message = unwrap!(message);
+                match message {
+                    can_2::Messages::Pcu(mes) => match mes.mode_raw() {
+                        0 => {
+                            CAN_PWM_CHANNEL.signal(can_2::PcuModeM0::new_from_raw(*mes.raw()));
+                        }
+                        1 => {
+                            CAN_RF_CHANNEL.signal(can_2::PcuModeM1::new_from_raw(*mes.raw()));
+                        }
+                        2 => {
+                            CAN_ENABLES_CHANNEL.signal(can_2::PcuModeM2::new_from_raw(*mes.raw()));
+                        }
+                        _ => {}
+                    },
+                    can_2::Messages::Driver(mes) => {
+                        CAN_DRIVER_CHANNEL.signal(mes.brake() > 5);
                     }
                     _ => {}
-                },
-                can_2::Messages::Driver(mes) => {
-                    CAN_DRIVER_CHANNEL.signal(mes.brake() > 5);
                 }
-                _ => {}
             }
         }
+        drop(can_data);
+        embassy_time::Timer::after_millis(100).await;
+        // DEBUG_CHANNEL.signal(a);
+        // a = !a;
     }
 }
 
 #[embassy_executor::task]
-async fn write_can(mut tx: CanTx<'static>) {
+async fn write_can(can: &'static Mutex<CriticalSectionRawMutex, CanController<'static>>) {
+    let mut a = false;
     loop {
         let (id, mes) = CAN_WRITER.receive().await;
-        let message = embassy_stm32::can::Frame::new_standard(id, &mes);
-        if let Ok(some) = message {
-            tx.write(&some).await;
+        let message = CanFrame::new(id, &mes);
+        let mut can_data = can.lock().await;
+        match can_data.write(&message).await {
+            Ok(_) => {
+                // DEBUG_CHANNEL.signal(a);
+                // a = !a;
+            }
+            Err(_) => {
+                // DEBUG_CHANNEL.signal(a);
+                // a = !a;
+            }
         }
+        drop(can_data);
+        // DEBUG_CHANNEL.signal(a);
+        // a =!a;
     }
 }

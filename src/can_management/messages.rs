@@ -362,7 +362,7 @@ impl core::convert::TryFrom<&[u8]> for TanksEbs {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 2 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 2 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 2];
         raw.copy_from_slice(&payload[..2]);
         Ok(Self { raw })
@@ -488,7 +488,7 @@ impl core::convert::TryFrom<&[u8]> for CarMission {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 1];
         raw.copy_from_slice(&payload[..1]);
         Ok(Self { raw })
@@ -562,9 +562,8 @@ impl PcuFault {
     
     
     /// Construct new PcuFault from values
-    pub fn new(fault_12v: bool, fault_dv: bool, fault_24v: bool, fault_pumpl: bool, fault_pumpr: bool, fault_fanbattr: bool, fault_fanbattl: bool) -> Result<Self, CanError> {
+    pub fn new(fault_dv: bool, fault_24v: bool, fault_pumpl: bool, fault_pumpr: bool, fault_fanbattr: bool, fault_fanbattl: bool) -> Result<Self, CanError> {
         let mut res = Self { raw: [0u8; 1] };
-        res.set_fault_12v(fault_12v)?;
         res.set_fault_dv(fault_dv)?;
         res.set_fault_24v(fault_24v)?;
         res.set_fault_pumpl(fault_pumpl)?;
@@ -583,40 +582,6 @@ impl PcuFault {
     /// Access message payload raw value
     pub fn raw(&self) -> &[u8; 1] {
         &self.raw
-    }
-    
-    /// fault_12v
-    ///
-    /// - Min: 0
-    /// - Max: 1
-    /// - Unit: "on"
-    /// - Receivers: Vector__XXX
-    #[inline(always)]
-    pub fn fault_12v(&self) -> bool {
-        self.fault_12v_raw()
-    }
-    
-    /// Get raw value of fault_12v
-    ///
-    /// - Start bit: 0
-    /// - Signal size: 1 bits
-    /// - Factor: 1
-    /// - Offset: 0
-    /// - Byte order: LittleEndian
-    /// - Value type: Unsigned
-    #[inline(always)]
-    pub fn fault_12v_raw(&self) -> bool {
-        let signal = self.raw.view_bits::<Lsb0>()[0..1].load_le::<u8>();
-        
-        signal == 1
-    }
-    
-    /// Set value of fault_12v
-    #[inline(always)]
-    pub fn set_fault_12v(&mut self, value: bool) -> Result<(), CanError> {
-        let value = value as u8;
-        self.raw.view_bits_mut::<Lsb0>()[0..1].store_le(value);
-        Ok(())
     }
     
     /// fault_dv
@@ -640,7 +605,7 @@ impl PcuFault {
     /// - Value type: Unsigned
     #[inline(always)]
     pub fn fault_dv_raw(&self) -> bool {
-        let signal = self.raw.view_bits::<Lsb0>()[1..2].load_le::<u8>();
+        let signal = self.raw.view_bits::<Lsb0>()[0..1].load_le::<u8>();
         
         signal == 1
     }
@@ -649,7 +614,7 @@ impl PcuFault {
     #[inline(always)]
     pub fn set_fault_dv(&mut self, value: bool) -> Result<(), CanError> {
         let value = value as u8;
-        self.raw.view_bits_mut::<Lsb0>()[1..2].store_le(value);
+        self.raw.view_bits_mut::<Lsb0>()[0..1].store_le(value);
         Ok(())
     }
     
@@ -674,7 +639,7 @@ impl PcuFault {
     /// - Value type: Unsigned
     #[inline(always)]
     pub fn fault_24v_raw(&self) -> bool {
-        let signal = self.raw.view_bits::<Lsb0>()[2..3].load_le::<u8>();
+        let signal = self.raw.view_bits::<Lsb0>()[1..2].load_le::<u8>();
         
         signal == 1
     }
@@ -683,7 +648,7 @@ impl PcuFault {
     #[inline(always)]
     pub fn set_fault_24v(&mut self, value: bool) -> Result<(), CanError> {
         let value = value as u8;
-        self.raw.view_bits_mut::<Lsb0>()[2..3].store_le(value);
+        self.raw.view_bits_mut::<Lsb0>()[1..2].store_le(value);
         Ok(())
     }
     
@@ -708,7 +673,7 @@ impl PcuFault {
     /// - Value type: Unsigned
     #[inline(always)]
     pub fn fault_pumpl_raw(&self) -> bool {
-        let signal = self.raw.view_bits::<Lsb0>()[3..4].load_le::<u8>();
+        let signal = self.raw.view_bits::<Lsb0>()[2..3].load_le::<u8>();
         
         signal == 1
     }
@@ -717,7 +682,7 @@ impl PcuFault {
     #[inline(always)]
     pub fn set_fault_pumpl(&mut self, value: bool) -> Result<(), CanError> {
         let value = value as u8;
-        self.raw.view_bits_mut::<Lsb0>()[3..4].store_le(value);
+        self.raw.view_bits_mut::<Lsb0>()[2..3].store_le(value);
         Ok(())
     }
     
@@ -742,7 +707,7 @@ impl PcuFault {
     /// - Value type: Unsigned
     #[inline(always)]
     pub fn fault_pumpr_raw(&self) -> bool {
-        let signal = self.raw.view_bits::<Lsb0>()[4..5].load_le::<u8>();
+        let signal = self.raw.view_bits::<Lsb0>()[3..4].load_le::<u8>();
         
         signal == 1
     }
@@ -751,7 +716,7 @@ impl PcuFault {
     #[inline(always)]
     pub fn set_fault_pumpr(&mut self, value: bool) -> Result<(), CanError> {
         let value = value as u8;
-        self.raw.view_bits_mut::<Lsb0>()[4..5].store_le(value);
+        self.raw.view_bits_mut::<Lsb0>()[3..4].store_le(value);
         Ok(())
     }
     
@@ -776,7 +741,7 @@ impl PcuFault {
     /// - Value type: Unsigned
     #[inline(always)]
     pub fn fault_fanbattr_raw(&self) -> bool {
-        let signal = self.raw.view_bits::<Lsb0>()[5..6].load_le::<u8>();
+        let signal = self.raw.view_bits::<Lsb0>()[4..5].load_le::<u8>();
         
         signal == 1
     }
@@ -785,7 +750,7 @@ impl PcuFault {
     #[inline(always)]
     pub fn set_fault_fanbattr(&mut self, value: bool) -> Result<(), CanError> {
         let value = value as u8;
-        self.raw.view_bits_mut::<Lsb0>()[5..6].store_le(value);
+        self.raw.view_bits_mut::<Lsb0>()[4..5].store_le(value);
         Ok(())
     }
     
@@ -810,7 +775,7 @@ impl PcuFault {
     /// - Value type: Unsigned
     #[inline(always)]
     pub fn fault_fanbattl_raw(&self) -> bool {
-        let signal = self.raw.view_bits::<Lsb0>()[6..7].load_le::<u8>();
+        let signal = self.raw.view_bits::<Lsb0>()[5..6].load_le::<u8>();
         
         signal == 1
     }
@@ -819,7 +784,7 @@ impl PcuFault {
     #[inline(always)]
     pub fn set_fault_fanbattl(&mut self, value: bool) -> Result<(), CanError> {
         let value = value as u8;
-        self.raw.view_bits_mut::<Lsb0>()[6..7].store_le(value);
+        self.raw.view_bits_mut::<Lsb0>()[5..6].store_le(value);
         Ok(())
     }
     
@@ -830,45 +795,13 @@ impl core::convert::TryFrom<&[u8]> for PcuFault {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 1];
         raw.copy_from_slice(&payload[..1]);
         Ok(Self { raw })
     }
 }
 
-#[cfg(feature = "debug")]
-impl core::fmt::Debug for PcuFault {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if f.alternate() {
-            f.debug_struct("PcuFault")
-                .field("fault_12v", &self.fault_12v())
-                .field("fault_dv", &self.fault_dv())
-                .field("fault_24v", &self.fault_24v())
-                .field("fault_pumpl", &self.fault_pumpl())
-                .field("fault_pumpr", &self.fault_pumpr())
-                .field("fault_fanbattr", &self.fault_fanbattr())
-                .field("fault_fanbattl", &self.fault_fanbattl())
-            .finish()
-        } else {
-            f.debug_tuple("PcuFault").field(&self.raw).finish()
-        }
-    }
-}
-
-#[cfg(feature = "arb")]
-impl<'a> Arbitrary<'a> for PcuFault {
-    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
-        let fault_12v = u.int_in_range(0..=1)? == 1;
-        let fault_dv = u.int_in_range(0..=1)? == 1;
-        let fault_24v = u.int_in_range(0..=1)? == 1;
-        let fault_pumpl = u.int_in_range(0..=1)? == 1;
-        let fault_pumpr = u.int_in_range(0..=1)? == 1;
-        let fault_fanbattr = u.int_in_range(0..=1)? == 1;
-        let fault_fanbattl = u.int_in_range(0..=1)? == 1;
-        PcuFault::new(fault_12v,fault_dv,fault_24v,fault_pumpl,fault_pumpr,fault_fanbattr,fault_fanbattl).map_err(|_| arbitrary::Error::IncorrectFormat)
-    }
-}
 
 /// Paddle
 ///
@@ -950,7 +883,7 @@ impl core::convert::TryFrom<&[u8]> for Paddle {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 1];
         raw.copy_from_slice(&payload[..1]);
         Ok(Self { raw })
@@ -1284,7 +1217,7 @@ impl core::convert::TryFrom<&[u8]> for Driver {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 4 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 4 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 4];
         raw.copy_from_slice(&payload[..4]);
         Ok(Self { raw })
@@ -1540,7 +1473,7 @@ impl core::convert::TryFrom<&[u8]> for BmsLv1 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 7 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 7 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 7];
         raw.copy_from_slice(&payload[..7]);
         Ok(Self { raw })
@@ -1772,7 +1705,7 @@ impl core::convert::TryFrom<&[u8]> for BmsLv2 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 7 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 7 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 7];
         raw.copy_from_slice(&payload[..7]);
         Ok(Self { raw })
@@ -2030,7 +1963,7 @@ impl core::convert::TryFrom<&[u8]> for BmsHv1 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 7 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 7 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 7];
         raw.copy_from_slice(&payload[..7]);
         Ok(Self { raw })
@@ -2270,7 +2203,7 @@ impl core::convert::TryFrom<&[u8]> for BmsHv2 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 7 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 7 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 7];
         raw.copy_from_slice(&payload[..7]);
         Ok(Self { raw })
@@ -2430,7 +2363,7 @@ impl core::convert::TryFrom<&[u8]> for Imu1 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 8 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 8 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 8];
         raw.copy_from_slice(&payload[..8]);
         Ok(Self { raw })
@@ -2586,7 +2519,7 @@ impl core::convert::TryFrom<&[u8]> for Imu2 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 8 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 8 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 8];
         raw.copy_from_slice(&payload[..8]);
         Ok(Self { raw })
@@ -2742,7 +2675,7 @@ impl core::convert::TryFrom<&[u8]> for Imu3 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 8 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 8 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 8];
         raw.copy_from_slice(&payload[..8]);
         Ok(Self { raw })
@@ -2847,7 +2780,7 @@ impl core::convert::TryFrom<&[u8]> for ImuCalib {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 1];
         raw.copy_from_slice(&payload[..1]);
         Ok(Self { raw })
@@ -3039,7 +2972,7 @@ impl core::convert::TryFrom<&[u8]> for Map {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 2 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 2 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 2];
         raw.copy_from_slice(&payload[..2]);
         Ok(Self { raw })
@@ -3359,7 +3292,7 @@ impl core::convert::TryFrom<&[u8]> for CarStatus {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 2 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 2 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 2];
         raw.copy_from_slice(&payload[..2]);
         Ok(Self { raw })
@@ -3770,7 +3703,7 @@ impl core::convert::TryFrom<&[u8]> for CarSettings {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 8 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 8 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 8];
         raw.copy_from_slice(&payload[..8]);
         Ok(Self { raw })
@@ -3880,7 +3813,7 @@ impl core::convert::TryFrom<&[u8]> for CheckAsb {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 1];
         raw.copy_from_slice(&payload[..1]);
         Ok(Self { raw })
@@ -4011,7 +3944,7 @@ impl core::convert::TryFrom<&[u8]> for LapStart {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 1];
         raw.copy_from_slice(&payload[..1]);
         Ok(Self { raw })
@@ -4225,7 +4158,7 @@ impl core::convert::TryFrom<&[u8]> for CarMissionStatus {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 1];
         raw.copy_from_slice(&payload[..1]);
         Ok(Self { raw })
@@ -4536,7 +4469,7 @@ impl core::convert::TryFrom<&[u8]> for Temp1 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 8 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 8 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 8];
         raw.copy_from_slice(&payload[..8]);
         Ok(Self { raw })
@@ -4772,7 +4705,7 @@ impl core::convert::TryFrom<&[u8]> for Temp2 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 8 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 8 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 8];
         raw.copy_from_slice(&payload[..8]);
         Ok(Self { raw })
@@ -4940,7 +4873,7 @@ impl core::convert::TryFrom<&[u8]> for SuspRear {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 3 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 3 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 3];
         raw.copy_from_slice(&payload[..3]);
         Ok(Self { raw })
@@ -5009,7 +4942,7 @@ impl core::convert::TryFrom<&[u8]> for Reserved2 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 0 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 0 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 0];
         raw.copy_from_slice(&payload[..0]);
         Ok(Self { raw })
@@ -5169,7 +5102,7 @@ impl core::convert::TryFrom<&[u8]> for SuspFront {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 3 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 3 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 3];
         raw.copy_from_slice(&payload[..3]);
         Ok(Self { raw })
@@ -5317,7 +5250,7 @@ impl core::convert::TryFrom<&[u8]> for TempFrontR {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 3 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 3 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 3];
         raw.copy_from_slice(&payload[..3]);
         Ok(Self { raw })
@@ -5427,7 +5360,7 @@ impl core::convert::TryFrom<&[u8]> for InvVolt {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 2 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 2 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 2];
         raw.copy_from_slice(&payload[..2]);
         Ok(Self { raw })
@@ -5572,7 +5505,7 @@ impl core::convert::TryFrom<&[u8]> for Pcu {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 7 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 7 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 7];
         raw.copy_from_slice(&payload[..7]);
         Ok(Self { raw })
@@ -6243,7 +6176,7 @@ impl core::convert::TryFrom<&[u8]> for Calib {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 1];
         raw.copy_from_slice(&payload[..1]);
         Ok(Self { raw })
@@ -6349,7 +6282,7 @@ impl core::convert::TryFrom<&[u8]> for CalibAck {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 1];
         raw.copy_from_slice(&payload[..1]);
         Ok(Self { raw })
@@ -6497,7 +6430,7 @@ impl core::convert::TryFrom<&[u8]> for PcuSwControl {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 1];
         raw.copy_from_slice(&payload[..1]);
         Ok(Self { raw })
@@ -6638,7 +6571,7 @@ impl core::convert::TryFrom<&[u8]> for PcuRfAck {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 1 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 1];
         raw.copy_from_slice(&payload[..1]);
         Ok(Self { raw })
@@ -6752,7 +6685,7 @@ impl core::convert::TryFrom<&[u8]> for Lem {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() != 8 { return Err(CanError::InvalidPayloadSize); }
+        if payload.len() < 8 { return Err(CanError::InvalidPayloadSize); }
         let mut raw = [0u8; 8];
         raw.copy_from_slice(&payload[..8]);
         Ok(Self { raw })
