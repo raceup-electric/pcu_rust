@@ -8,6 +8,7 @@ use embassy_futures::select::*;
 use embassy_stm32::{
     adc::Adc,
     can::{filter::*, CanRx, CanTx, Fifo, StandardId},
+    exti::ExtiInput,
     gpio::{Input, Level, Output, OutputType, Pull, Speed},
     time::hz,
     timer::simple_pwm::{PwmPin, SimplePwm},
@@ -15,7 +16,7 @@ use embassy_stm32::{
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex, signal::Signal,
 };
-use embassy_time::Duration;
+use embassy_time::{Duration, Ticker};
 
 use defmt::*;
 use static_cell::StaticCell;
@@ -24,7 +25,7 @@ mod can_management;
 mod pins;
 mod pwm_management;
 use crate::can_management::{messages as can_2, CanController, CanFrame};
-use crate::pins::{AssignedResources, Brake, Can, Enables, Faults, Pwm, Senses, Sw, Usb};
+use crate::pins::*;
 use crate::pwm_management::PwmDualController;
 
 static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
@@ -35,9 +36,7 @@ static CAN_ENABLES_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM2> = 
 static CAN_DRIVER_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 
 static CAN: StaticCell<Mutex<CriticalSectionRawMutex, CanController>> = StaticCell::new();
-static CAN_WRITER: Channel<CriticalSectionRawMutex, (u16, [u8; 8]), 20> = Channel::new();
-
-static DEBUG_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+static CAN_WRITER: Channel<CriticalSectionRawMutex, (u16, usize, [u8; 8]), 20> = Channel::new();
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -58,7 +57,8 @@ async fn main(_spawner: Spawner) {
     .await;
     let can_mutex = Mutex::new(can);
     let can = StaticCell::init(&CAN, can_mutex);
-    // can.can.modify_filters().enable_bank(
+    // let mut can_data = can.lock().await;
+    // can_data.can.modify_filters().enable_bank(
     //     0,
     //     Fifo::Fifo0,
     //     BankConfig::List16([
@@ -70,8 +70,8 @@ async fn main(_spawner: Spawner) {
     //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
     //     ]),
     // );
-    // can.can.modify_filters().enable_bank(
-    //     0,
+    // can_data.can.modify_filters().enable_bank(
+    //     1,
     //     Fifo::Fifo1,
     //     BankConfig::List16([
     //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
@@ -82,7 +82,8 @@ async fn main(_spawner: Spawner) {
     //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
     //     ]),
     // );
-    //
+    // drop(can_data);
+
     // let (_can_tx, _can_rx) = can.can.split();
 
     let executor = EXECUTOR_LOW.init(Executor::new());
@@ -93,7 +94,36 @@ async fn main(_spawner: Spawner) {
         unwrap!(spawner.spawn(read_can(can)));
         unwrap!(spawner.spawn(write_can(can)));
         unwrap!(spawner.spawn(fault_detection(r.faults)));
+        unwrap!(spawner.spawn(task_brake(r.brake)));
+        unwrap!(spawner.spawn(task_asms(r.asms)));
     });
+}
+
+#[embassy_executor::task]
+async fn task_asms(asms: Asms) {
+    let asms_sens = Input::new(asms.sense_asms, Pull::Down);
+    let mut ticker = Ticker::every(Duration::from_millis(100));
+    loop {
+        ticker.next().await;
+        CAN_WRITER.send((
+            can_2::Asms::MESSAGE_ID as u16,
+            can_2::Asms::DLC as usize,
+            pad_array::<1,8>(can_2::Asms::new(asms_sens.is_high()).ok().unwrap().raw(), 0)
+        )).await;
+    }
+}
+
+#[embassy_executor::task]
+async fn task_brake(brake: Brake) {
+    let mut brake_light = Output::new(brake.enable_brake, Level::Low, Speed::High);
+    loop {
+        let brake_enable = CAN_DRIVER_CHANNEL.wait().await;
+        if brake_enable {
+            brake_light.set_high();
+        } else {
+            brake_light.set_low();
+        }
+    }
 }
 
 fn pwm_enable_check(a: &[bool; 1]) -> bool {
@@ -208,14 +238,7 @@ async fn task_enables(enables: Enables) {
     let mut enable_emb = Output::new(enables.enable_emb, Level::Low, Speed::Low);
     let mut enable_dv = Output::new(enables.enable_dv, Level::Low, Speed::Low);
     let mut _enable_24v = Output::new(enables.enable_24v, Level::High, Speed::Low);
-    // loop {
-    //     let a = DEBUG_CHANNEL.wait().await;
-    //     if a {
-    //         _enable_24v.set_high();
-    //     } else {
-    //         _enable_24v.set_low();
-    //     }
-    // }
+
     loop {
         match select(CAN_RF_CHANNEL.wait(), CAN_ENABLES_CHANNEL.wait()).await {
             Either::First(mes) => {
@@ -225,6 +248,7 @@ async fn task_enables(enables: Enables) {
                     CAN_WRITER
                         .send((
                             can_2::PcuRfAck::MESSAGE_ID as u16,
+                            can_2::PcuRfAck::DLC as usize,
                             pad_array::<1, 8>(some.raw(), 0),
                         ))
                         .await;
@@ -294,14 +318,12 @@ async fn fault_detection(faults: Faults) {
         Input::new(faults.fault_fanbattr, Pull::Down),
     ];
 
-    let mut ticker = embassy_time::Ticker::every(Duration::from_millis(500));
+    let mut ticker = embassy_time::Ticker::every(Duration::from_millis(100));
 
-    let mut a = false;
     loop {
-        // DEBUG_CHANNEL.signal(a);
-        // a = !a;
         ticker.next().await;
         let message = can_2::PcuFault::new(
+            false,
             faults[FaultEnum::Dv].is_high(),
             faults[FaultEnum::V24].is_high(),
             faults[FaultEnum::Pumpl].is_high(),
@@ -313,6 +335,7 @@ async fn fault_detection(faults: Faults) {
             CAN_WRITER
                 .send((
                     can_2::PcuFault::MESSAGE_ID as u16,
+                    can_2::PcuFault::DLC as usize,
                     pad_array::<1, 8>(mes.raw(), 0),
                 ))
                 .await;
@@ -351,7 +374,6 @@ async fn task_senses(mut senses: Senses) {
 
 #[embassy_executor::task]
 async fn read_can(can: &'static Mutex<CriticalSectionRawMutex, CanController<'static>>) {
-    let mut a = false;
     loop {
         let mut can_data = can.lock().await;
         if let Ok(frame) = can_data.read().await {
@@ -381,31 +403,17 @@ async fn read_can(can: &'static Mutex<CriticalSectionRawMutex, CanController<'st
             }
         }
         drop(can_data);
-        embassy_time::Timer::after_millis(100).await;
-        // DEBUG_CHANNEL.signal(a);
-        // a = !a;
+        embassy_time::Timer::after_micros(50).await;
     }
 }
 
 #[embassy_executor::task]
 async fn write_can(can: &'static Mutex<CriticalSectionRawMutex, CanController<'static>>) {
-    let mut a = false;
     loop {
-        let (id, mes) = CAN_WRITER.receive().await;
-        let message = CanFrame::new(id, &mes);
+        let (id, dlc, mes) = CAN_WRITER.receive().await;
+        let message = CanFrame::new(id, &mes[..dlc]);
         let mut can_data = can.lock().await;
-        match can_data.write(&message).await {
-            Ok(_) => {
-                // DEBUG_CHANNEL.signal(a);
-                // a = !a;
-            }
-            Err(_) => {
-                // DEBUG_CHANNEL.signal(a);
-                // a = !a;
-            }
-        }
+        let _ = can_data.write(&message).await;
         drop(can_data);
-        // DEBUG_CHANNEL.signal(a);
-        // a =!a;
     }
 }

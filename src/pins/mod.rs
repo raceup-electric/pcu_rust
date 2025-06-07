@@ -70,6 +70,11 @@ assign_resources! {
         can_1: CAN1,
     }
 
+    asms : Asms {
+        sense_asms: PA10,
+        exti_asms: EXTI10,
+    }
+
     sw: Sw {
         swdio: PA13,
         swclk: PA14,

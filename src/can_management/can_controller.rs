@@ -32,7 +32,7 @@ pub enum CanError {
 }
 
 pub struct CanController<'a> {
-    can: Can<'a>,
+    pub can: Can<'a>,
     tx_frame: Option<CanFrame>,
     is_can2: bool
 }
