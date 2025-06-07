@@ -1,8 +1,6 @@
 pub mod can_controller;
 pub mod frame;
 pub use can_controller::CanController;
-pub use can_controller::CanError;
-use defmt::info;
 pub use frame::CanFrame;
 pub mod messages;
 

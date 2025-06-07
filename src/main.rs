@@ -35,7 +35,6 @@ static CAN_RF_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM1> = Signa
 static CAN_ENABLES_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM2> = Signal::new();
 static CAN_DRIVER_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 
-static CAN: StaticCell<Mutex<CriticalSectionRawMutex, CanController>> = StaticCell::new();
 static CAN_WRITER: Channel<CriticalSectionRawMutex, (u16, usize, [u8; 8]), 20> = Channel::new();
 
 #[embassy_executor::main]
@@ -55,44 +54,39 @@ async fn main(_spawner: Spawner) {
         usb_peripherals.usb_plus,
     )
     .await;
-    let can_mutex = Mutex::new(can);
-    let can = StaticCell::init(&CAN, can_mutex);
-    // let mut can_data = can.lock().await;
-    // can_data.can.modify_filters().enable_bank(
-    //     0,
-    //     Fifo::Fifo0,
-    //     BankConfig::List16([
-    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
-    //             can_2::Driver::MESSAGE_ID as u16
-    //         ))),
-    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-    //     ]),
-    // );
-    // can_data.can.modify_filters().enable_bank(
-    //     1,
-    //     Fifo::Fifo1,
-    //     BankConfig::List16([
-    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
-    //             can_2::Pcu::MESSAGE_ID as u16
-    //         ))),
-    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-    //         ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-    //     ]),
-    // );
-    // drop(can_data);
-
-    // let (_can_tx, _can_rx) = can.can.split();
+    can.can.modify_filters().enable_bank(
+        0,
+        Fifo::Fifo0,
+        BankConfig::List16([
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
+                can_2::Driver::MESSAGE_ID as u16
+            ))),
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+        ]),
+    );
+    can.can.modify_filters().enable_bank(
+        1,
+        Fifo::Fifo1,
+        BankConfig::List16([
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
+                can_2::Pcu::MESSAGE_ID as u16
+            ))),
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+        ]),
+    );
+    let (mut _can_tx, mut _can_rx) = can.can.split();
 
     let executor = EXECUTOR_LOW.init(Executor::new());
     executor.run(|spawner| {
         unwrap!(spawner.spawn(task_senses(r.senses)));
         unwrap!(spawner.spawn(task_enables(r.enables)));
         unwrap!(spawner.spawn(pwm(r.pwm)));
-        unwrap!(spawner.spawn(read_can(can)));
-        unwrap!(spawner.spawn(write_can(can)));
+        unwrap!(spawner.spawn(read_can(_can_rx)));
+        unwrap!(spawner.spawn(write_can(_can_tx)));
         unwrap!(spawner.spawn(fault_detection(r.faults)));
         unwrap!(spawner.spawn(task_brake(r.brake)));
         unwrap!(spawner.spawn(task_asms(r.asms)));
@@ -102,14 +96,16 @@ async fn main(_spawner: Spawner) {
 #[embassy_executor::task]
 async fn task_asms(asms: Asms) {
     let asms_sens = Input::new(asms.sense_asms, Pull::Down);
-    let mut ticker = Ticker::every(Duration::from_millis(100));
+    let mut ticker = Ticker::every(Duration::from_millis(1));
     loop {
         ticker.next().await;
-        CAN_WRITER.send((
-            can_2::Asms::MESSAGE_ID as u16,
-            can_2::Asms::DLC as usize,
-            pad_array::<1,8>(can_2::Asms::new(asms_sens.is_high()).ok().unwrap().raw(), 0)
-        )).await;
+        CAN_WRITER
+            .send((
+                can_2::Asms::MESSAGE_ID as u16,
+                can_2::Asms::DLC as usize,
+                pad_array::<1, 8>(can_2::Asms::new(asms_sens.is_high()).ok().unwrap().raw(), 0),
+            ))
+            .await;
     }
 }
 
@@ -288,14 +284,6 @@ impl<T> Index<FaultEnum> for [T] {
     }
 }
 
-//fn update_fault_state(pin: &ExtiInput, state: &mut bool) {
-//    if pin.is_high() {
-//        *state = true;
-//    } else {
-//        *state = false;
-//    }
-//}
-
 fn pad_array<const N: usize, const P: usize>(input: &[u8; N], pad_value: u8) -> [u8; P] {
     let mut output = [pad_value; P];
 
@@ -368,15 +356,16 @@ async fn task_senses(mut senses: Senses) {
         let _val_fanradr = switch_infineon(adc_3.blocking_read(&mut senses.sense_fanradr));
         let _val_emb = switch_infineon(adc_3.blocking_read(&mut senses.sense_emb));
         let _val_steeract = switch_infineon(adc_2.blocking_read(&mut senses.steeract_sense));
-        embassy_time::Timer::after_millis(5000).await;
+        embassy_time::Timer::after_millis(500).await;
     }
 }
 
 #[embassy_executor::task]
-async fn read_can(can: &'static Mutex<CriticalSectionRawMutex, CanController<'static>>) {
+async fn read_can(mut can: CanRx<'static>) {
     loop {
-        let mut can_data = can.lock().await;
-        if let Ok(frame) = can_data.read().await {
+        if let Ok(envelope) = can.try_read()
+        {
+            let frame = CanFrame::from_envelope(envelope);
             let message =
                 can_2::Messages::from_can_message(u32::from(frame.id()), frame._bytes().as_slice())
                     .ok();
@@ -402,18 +391,16 @@ async fn read_can(can: &'static Mutex<CriticalSectionRawMutex, CanController<'st
                 }
             }
         }
-        drop(can_data);
         embassy_time::Timer::after_micros(50).await;
     }
 }
 
 #[embassy_executor::task]
-async fn write_can(can: &'static Mutex<CriticalSectionRawMutex, CanController<'static>>) {
+async fn write_can(mut can:CanTx<'static>) {
     loop {
         let (id, dlc, mes) = CAN_WRITER.receive().await;
         let message = CanFrame::new(id, &mes[..dlc]);
-        let mut can_data = can.lock().await;
-        let _ = can_data.write(&message).await;
-        drop(can_data);
+        let _ = can.try_write(&message.frame());
+        embassy_time::Timer::after_micros(50).await;
     }
 }
