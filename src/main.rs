@@ -96,16 +96,21 @@ async fn main(_spawner: Spawner) {
 #[embassy_executor::task]
 async fn task_asms(asms: Asms) {
     let asms_sens = Input::new(asms.sense_asms, Pull::Down);
-    let mut ticker = Ticker::every(Duration::from_millis(1));
+    let mut ticker = Ticker::every(Duration::from_millis(50));
+    let mut asms_prev_state = false;
     loop {
         ticker.next().await;
+        let asms_curr_state = asms_sens.is_high();
         CAN_WRITER
             .send((
                 can_2::Asms::MESSAGE_ID as u16,
                 can_2::Asms::DLC as usize,
-                pad_array::<1, 8>(can_2::Asms::new(asms_sens.is_high()).ok().unwrap().raw(), 0),
+                pad_array::<1, 8>(can_2::Asms::new(asms_curr_state).ok().unwrap().raw(), 0),
             ))
             .await;
+        
+
+        asms_prev_state = asms_curr_state;
     }
 }
 
@@ -344,18 +349,37 @@ async fn task_senses(mut senses: Senses) {
     let mut adc_1 = Adc::new(senses.adc_1);
     let mut adc_2 = Adc::new(senses.adc_2);
     let mut adc_3 = Adc::new(senses.adc_3);
+    let mut msg_1 = can_2::PcuAdc1::new(0f32, 0f32, 0f32).ok().unwrap();
+    let mut msg_2 = can_2::PcuAdc2::new(0f32, 0f32, 0f32, 0f32).ok().unwrap();
+    let mut msg_3 = can_2::PcuAdc3::new(0f32, 0f32, 0f32).ok().unwrap();
 
     loop {
-        let _val_dv = switch_texas(adc_1.blocking_read(&mut senses.sense_dv));
-        let _val_24v = switch_texas(adc_1.blocking_read(&mut senses.sense_24v));
-        let _val_pumpl = switch_texas(adc_1.blocking_read(&mut senses.sense_pumpl));
-        let _val_pumpr = switch_texas(adc_1.blocking_read(&mut senses.sense_pumpr));
-        let _val_fanbattl = switch_texas(adc_2.blocking_read(&mut senses.sense_fanbattl));
-        let _val_fanbattr = switch_texas(adc_2.blocking_read(&mut senses.sense_fanbattr));
-        let _val_fanradl = switch_infineon(adc_2.blocking_read(&mut senses.sense_fanradl));
-        let _val_fanradr = switch_infineon(adc_3.blocking_read(&mut senses.sense_fanradr));
-        let _val_emb = switch_infineon(adc_3.blocking_read(&mut senses.sense_emb));
-        let _val_steeract = switch_infineon(adc_2.blocking_read(&mut senses.steeract_sense));
+        let val_dv = switch_texas(adc_1.blocking_read(&mut senses.sense_dv));
+        let val_24v = switch_texas(adc_1.blocking_read(&mut senses.sense_24v));
+        let val_pumpl = switch_texas(adc_1.blocking_read(&mut senses.sense_pumpl));
+        let val_pumpr = switch_texas(adc_1.blocking_read(&mut senses.sense_pumpr));
+        let val_fanbattl = switch_texas(adc_2.blocking_read(&mut senses.sense_fanbattl));
+        let val_fanbattr = switch_texas(adc_2.blocking_read(&mut senses.sense_fanbattr));
+        let val_fanradl = switch_infineon(adc_2.blocking_read(&mut senses.sense_fanradl));
+        let val_fanradr = switch_infineon(adc_3.blocking_read(&mut senses.sense_fanradr));
+        let val_emb = switch_infineon(adc_3.blocking_read(&mut senses.sense_emb));
+        let val_steeract = switch_infineon(adc_2.blocking_read(&mut senses.steeract_sense));
+
+        let _ = msg_1.set_adc_24v(val_24v);
+        let _ = msg_1.set_adc_pumpl(val_pumpl);
+        let _ = msg_1.set_adc_pumpr(val_pumpr);
+        let _ = msg_2.set_adc_fanradl(val_fanradl);
+        let _ = msg_2.set_adc_fanradr(val_fanradr);
+        let _ = msg_2.set_adc_fanbattl(val_fanbattl);
+        let _ = msg_2.set_adc_fanradr(val_fanbattr);
+        let _ = msg_3.set_adc_dv(val_dv);
+        let _ = msg_3.set_adc_emb(val_emb);
+        let _ = msg_3.set_adc_steeract(val_steeract);
+
+        CAN_WRITER.send((can_2::PcuAdc1::MESSAGE_ID as u16, can_2::PcuAdc1::DLC as usize, pad_array::<6,8>(msg_1.raw(), 0))).await;
+        CAN_WRITER.send((can_2::PcuAdc2::MESSAGE_ID as u16, can_2::PcuAdc2::DLC as usize, msg_2.raw().clone())).await;
+        CAN_WRITER.send((can_2::PcuAdc3::MESSAGE_ID as u16, can_2::PcuAdc3::DLC as usize, pad_array::<6,8>(msg_3.raw(), 0))).await;
+
         embassy_time::Timer::after_millis(500).await;
     }
 }
