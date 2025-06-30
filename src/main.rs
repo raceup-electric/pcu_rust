@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use core::ops::Index;
+use core::{cmp::min, ops::Index};
 
 use embassy_executor::{Executor, Spawner};
 use embassy_futures::select::*;
@@ -206,24 +206,43 @@ async fn pwm(pins: Pwm) {
             Output::new(pins.enable_pumpr, Level::Low, Speed::Low),
         );
 
-    pwm_fanrad.set_level( 0, true);
-    pwm_fanbatt.set_level( 0, true);
-    pwm_pump.set_level(0, true);
+    pwm_pump.duty = min(percent_to_duty(100), pwm_pump.duty.saturating_add(13107));
+    pwm_pump.set_duty_left(pwm_pump.duty);
+    pwm_pump.set_duty_right(pwm_pump.duty);
+
+    
     loop {
         let message = CAN_PWM_CHANNEL.wait().await;
         match message.mission_status() {
             can_2::CarMissionStatusMissionStatus::MissionRunning => {
-                pwm_pump.set_duty(percent_to_duty(100)).await;
-                pwm_fanbatt.set_duty(percent_to_duty(100)).await;
-                pwm_fanrad.set_duty(percent_to_duty(80)).await;
+                // pwm_fanrad.set_level( 0, true);
+                // pwm_fanbatt.set_level( 0, true);
+                pwm_pump.set_level(0, true);
             },
-            _ => {
-                pwm_fanrad.set_duty(percent_to_duty(50)).await;
-                pwm_fanbatt.set_duty(percent_to_duty(0)).await;
-                pwm_pump.set_duty(percent_to_duty(0)).await;
-            }
+            can_2::CarMissionStatusMissionStatus::MissionFinished => {
+                pwm_pump.duty = min(percent_to_duty(50), pwm_pump.duty.saturating_add(13107));
+                pwm_pump.set_duty_left(pwm_pump.duty);
+                pwm_pump.set_duty_right(pwm_pump.duty);
+            },
+            can_2::CarMissionStatusMissionStatus::MissionNotRunning => {},
+            can_2::CarMissionStatusMissionStatus::_Other(_) => {}
         }
     }
+    // loop {
+    //     let message = CAN_PWM_CHANNEL.wait().await;
+    //     match message.mission_status() {
+    //         can_2::CarMissionStatusMissionStatus::MissionRunning => {
+    //             pwm_pump.set_duty(percent_to_duty(100)).await;
+    //             pwm_fanbatt.set_duty(percent_to_duty(100)).await;
+    //             pwm_fanrad.set_duty(percent_to_duty(80)).await;
+    //         },
+    //         _ => {
+    //             pwm_fanrad.set_duty(percent_to_duty(50)).await;
+    //             pwm_fanbatt.set_duty(percent_to_duty(0)).await;
+    //             pwm_pump.set_duty(percent_to_duty(0)).await;
+    //         }
+    //     }
+    // }
 }
 
 #[embassy_executor::task]

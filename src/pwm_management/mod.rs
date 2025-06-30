@@ -12,7 +12,7 @@ where
 {
     left: SimplePwmChannel<'a, T>,
     right: SimplePwmChannel<'a, T>,
-    duty: u16,
+    pub duty: u16,
     enablement: [bool; N],
     enable_check: &'a dyn Fn(&[bool; N]) -> bool,
     enabled: bool,
@@ -46,13 +46,13 @@ where
         }
     }
 
-    fn set_duty_right(&mut self, duty_cycle: u16) {
+    pub fn set_duty_right(&mut self, duty_cycle: u16) {
         self.right
             .set_duty_cycle_fraction(duty_cycle, 0_u16.wrapping_sub(1));
         self.update_debug_pin();
     }
 
-    fn set_duty_left(&mut self, duty_cycle: u16) {
+    pub fn set_duty_left(&mut self, duty_cycle: u16) {
         self.left
             .set_duty_cycle_fraction(duty_cycle, 0_u16.wrapping_sub(1));
         self.update_debug_pin()
@@ -90,7 +90,7 @@ where
                     false => {
                         self.duty = min(duty_cycle, self.duty.saturating_add(13107)); //20% al tick
                         self.set_duty_left(self.duty);
-                        self.set_duty_left(self.duty);
+                        self.set_duty_right(self.duty);
                     },
                 }
             }
