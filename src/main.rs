@@ -8,7 +8,6 @@ use embassy_futures::select::*;
 use embassy_stm32::{
     adc::Adc,
     can::{filter::*, CanRx, CanTx, Fifo, StandardId},
-    exti::ExtiInput,
     gpio::{Input, Level, Output, OutputType, Pull, Speed},
     time::hz,
     timer::simple_pwm::{PwmPin, SimplePwm},
@@ -30,7 +29,7 @@ use crate::pwm_management::PwmDualController;
 
 static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
 
-static CAN_PWM_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM0> = Signal::new();
+static CAN_PWM_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CarMissionStatus> = Signal::new();
 static CAN_RF_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM1> = Signal::new();
 static CAN_ENABLES_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM2> = Signal::new();
 static CAN_DRIVER_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
@@ -73,7 +72,9 @@ async fn main(_spawner: Spawner) {
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
                 can_2::Pcu::MESSAGE_ID as u16
             ))),
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
+                can_2::CarMissionStatus::MESSAGE_ID as u16
+            ))),
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
         ]),
@@ -205,26 +206,23 @@ async fn pwm(pins: Pwm) {
             Output::new(pins.enable_pumpr, Level::Low, Speed::Low),
         );
 
+    pwm_fanrad.set_level( 0, true);
+    pwm_fanbatt.set_level( 0, true);
+    pwm_pump.set_level(0, true);
     loop {
         let message = CAN_PWM_CHANNEL.wait().await;
-        // radiator fans
-        pwm_fanrad.set_duty_left(percent_to_duty(50 + message.fanrad_speed_left() / 2));
-        pwm_fanrad.set_duty_right(percent_to_duty(50 + message.fanrad_speed_right() / 2));
-        pwm_fanrad.set_level(
-            0,
-            message.fanrad_enable_left() || message.fanrad_enable_right(),
-        );
-        // battery fans
-        pwm_fanbatt.set_duty_left(percent_to_duty(message.fanbatt_speed_left()));
-        pwm_fanbatt.set_duty_right(percent_to_duty(message.fanbatt_speed_right()));
-        pwm_fanbatt.set_level(
-            0,
-            message.fanbatt_enable_left() || message.fanbatt_enable_right(),
-        );
-        // pump
-        pwm_pump.set_duty_left(percent_to_duty(message.pump_speed_left()));
-        pwm_pump.set_duty_right(percent_to_duty(message.pump_speed_right()));
-        pwm_pump.set_level(0, message.pump_enable_left() || message.pump_enable_right());
+        match message.mission_status() {
+            can_2::CarMissionStatusMissionStatus::MissionRunning => {
+                pwm_pump.set_duty(percent_to_duty(100)).await;
+                pwm_fanbatt.set_duty(percent_to_duty(100)).await;
+                pwm_fanrad.set_duty(percent_to_duty(80)).await;
+            },
+            _ => {
+                pwm_fanrad.set_duty(percent_to_duty(50)).await;
+                pwm_fanbatt.set_duty(percent_to_duty(0)).await;
+                pwm_pump.set_duty(percent_to_duty(0)).await;
+            }
+        }
     }
 }
 
@@ -411,9 +409,6 @@ async fn read_can(mut can: CanRx<'static>) {
                 let message = unwrap!(message);
                 match message {
                     can_2::Messages::Pcu(mes) => match mes.mode_raw() {
-                        0 => {
-                            CAN_PWM_CHANNEL.signal(can_2::PcuModeM0::new_from_raw(*mes.raw()));
-                        }
                         1 => {
                             CAN_RF_CHANNEL.signal(can_2::PcuModeM1::new_from_raw(*mes.raw()));
                         }
@@ -427,6 +422,9 @@ async fn read_can(mut can: CanRx<'static>) {
                     },
                     can_2::Messages::Driver(mes) => {
                         CAN_DRIVER_CHANNEL.signal(mes.brake() > 5);
+                    },
+                    can_2::Messages::CarMissionStatus(mes) => {
+                        CAN_PWM_CHANNEL.signal(mes);
                     }
                     _ => {}
                 }

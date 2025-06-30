@@ -1,5 +1,10 @@
+use core::{cmp::min, sync::atomic::{AtomicBool, Ordering}};
+
 use embassy_stm32::timer::simple_pwm::SimplePwmChannel;
+use embassy_time::Duration;
 use {defmt_rtt as _, panic_probe as _};
+
+static IS_POWER_INCREASING : AtomicBool = AtomicBool::new(false);
 
 pub struct PwmDualController<'a, T, const N: usize>
 where
@@ -7,8 +12,7 @@ where
 {
     left: SimplePwmChannel<'a, T>,
     right: SimplePwmChannel<'a, T>,
-    duty_left: u16,
-    duty_right: u16,
+    duty: u16,
     enablement: [bool; N],
     enable_check: &'a dyn Fn(&[bool; N]) -> bool,
     enabled: bool,
@@ -33,8 +37,7 @@ where
         Self {
             left,
             right,
-            duty_left: 0,
-            duty_right: 0,
+            duty: 0,
             enablement,
             enable_check,
             enabled,
@@ -43,24 +46,56 @@ where
         }
     }
 
-    pub fn set_duty_right(&mut self, duty_cycle: u16) {
-        self.duty_right = duty_cycle;
+    fn set_duty_right(&mut self, duty_cycle: u16) {
         self.right
             .set_duty_cycle_fraction(duty_cycle, 0_u16.wrapping_sub(1));
         self.update_debug_pin();
     }
 
-    pub fn set_duty_left(&mut self, duty_cycle: u16) {
-        self.duty_left = duty_cycle;
+    fn set_duty_left(&mut self, duty_cycle: u16) {
         self.left
             .set_duty_cycle_fraction(duty_cycle, 0_u16.wrapping_sub(1));
         self.update_debug_pin()
     }
 
     #[allow(dead_code)]
-    pub fn set_duty(&mut self, duty_cyle: u16) {
-        self.set_duty_left(duty_cyle);
-        self.set_duty_right(duty_cyle);
+    pub async fn set_duty(&mut self, duty_cycle: u16) {
+        if duty_cycle < self.duty
+        {
+            self.set_duty_left(duty_cycle);
+            self.set_duty_right(duty_cycle);
+            self.duty = duty_cycle;
+        }
+        else
+        {
+            let mut ticker = embassy_time::Ticker::every(Duration::from_millis(200));
+            loop {
+                if self.duty == duty_cycle
+                {
+                    self.duty = duty_cycle;
+                    IS_POWER_INCREASING.store(false, Ordering::SeqCst); //INFO: come su c++20
+                    return ;
+                }
+                else if self.duty > duty_cycle
+                {
+                    self.set_duty_left(duty_cycle);
+                    self.set_duty_right(duty_cycle);
+                    self.duty = duty_cycle;
+                    IS_POWER_INCREASING.store(false, Ordering::SeqCst);
+                    return ;
+                }
+                ticker.next().await;
+                match IS_POWER_INCREASING.swap(true, Ordering::SeqCst) {
+                    true => {},
+                    false => {
+                        self.duty = min(duty_cycle, self.duty.saturating_add(13107)); //20% al tick
+                        self.set_duty_left(self.duty);
+                        self.set_duty_left(self.duty);
+                    },
+                }
+            }
+        }
+        return ;
     }
 
     #[allow(dead_code)]
@@ -98,11 +133,11 @@ where
     }
 
     fn update_debug_pin(&mut self) {
-        match self.enabled && self.duty_left != 0 {
+        match self.enabled && self.duty != 0 {
             true => self.debug_pin_left.set_high(),
             false => self.debug_pin_left.set_low(),
         }
-        match self.enabled && self.duty_right != 0 {
+        match self.enabled && self.duty != 0 {
             true => self.debug_pin_right.set_high(),
             false => self.debug_pin_right.set_low(),
         }
