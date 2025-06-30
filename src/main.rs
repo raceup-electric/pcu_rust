@@ -97,7 +97,6 @@ async fn main(_spawner: Spawner) {
 async fn task_asms(asms: Asms) {
     let asms_sens = Input::new(asms.sense_asms, Pull::Down);
     let mut ticker = Ticker::every(Duration::from_millis(50));
-    let mut asms_prev_state = false;
     loop {
         ticker.next().await;
         let asms_curr_state = asms_sens.is_high();
@@ -108,9 +107,6 @@ async fn task_asms(asms: Asms) {
                 pad_array::<1, 8>(can_2::Asms::new(asms_curr_state).ok().unwrap().raw(), 0),
             ))
             .await;
-        
-
-        asms_prev_state = asms_curr_state;
     }
 }
 
@@ -212,8 +208,8 @@ async fn pwm(pins: Pwm) {
     loop {
         let message = CAN_PWM_CHANNEL.wait().await;
         // radiator fans
-        pwm_fanrad.set_duty_left(percent_to_duty(message.fanrad_speed_left()));
-        pwm_fanrad.set_duty_right(percent_to_duty(message.fanrad_speed_right()));
+        pwm_fanrad.set_duty_left(percent_to_duty(50 + message.fanrad_speed_left() / 2));
+        pwm_fanrad.set_duty_right(percent_to_duty(50 + message.fanrad_speed_right() / 2));
         pwm_fanrad.set_level(
             0,
             message.fanrad_enable_left() || message.fanrad_enable_right(),
@@ -376,9 +372,27 @@ async fn task_senses(mut senses: Senses) {
         let _ = msg_3.set_adc_emb(val_emb);
         let _ = msg_3.set_adc_steeract(val_steeract);
 
-        CAN_WRITER.send((can_2::PcuAdc1::MESSAGE_ID as u16, can_2::PcuAdc1::DLC as usize, pad_array::<6,8>(msg_1.raw(), 0))).await;
-        CAN_WRITER.send((can_2::PcuAdc2::MESSAGE_ID as u16, can_2::PcuAdc2::DLC as usize, msg_2.raw().clone())).await;
-        CAN_WRITER.send((can_2::PcuAdc3::MESSAGE_ID as u16, can_2::PcuAdc3::DLC as usize, pad_array::<6,8>(msg_3.raw(), 0))).await;
+        CAN_WRITER
+            .send((
+                can_2::PcuAdc1::MESSAGE_ID as u16,
+                can_2::PcuAdc1::DLC as usize,
+                pad_array::<6, 8>(msg_1.raw(), 0),
+            ))
+            .await;
+        CAN_WRITER
+            .send((
+                can_2::PcuAdc2::MESSAGE_ID as u16,
+                can_2::PcuAdc2::DLC as usize,
+                msg_2.raw().clone(),
+            ))
+            .await;
+        CAN_WRITER
+            .send((
+                can_2::PcuAdc3::MESSAGE_ID as u16,
+                can_2::PcuAdc3::DLC as usize,
+                pad_array::<6, 8>(msg_3.raw(), 0),
+            ))
+            .await;
 
         embassy_time::Timer::after_millis(500).await;
     }
@@ -407,6 +421,9 @@ async fn read_can(mut can: CanRx<'static>) {
                             CAN_ENABLES_CHANNEL.signal(can_2::PcuModeM2::new_from_raw(*mes.raw()));
                         }
                         _ => {}
+                    },
+                    can_2::Messages::EbsBrakeReq(mes) => {
+                        CAN_DRIVER_CHANNEL.signal(mes.req());
                     },
                     can_2::Messages::Driver(mes) => {
                         CAN_DRIVER_CHANNEL.signal(mes.brake() > 5);
