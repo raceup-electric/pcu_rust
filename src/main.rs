@@ -144,7 +144,7 @@ async fn pwm(pins: Pwm) {
         None,
         Some(fanradr),
         Some(fanradl),
-        hz(25_000),
+        hz(50),
         Default::default(),
     );
     let fanrad_pwm_channels = fanrad_pwm_driver.split();
@@ -174,7 +174,7 @@ async fn pwm(pins: Pwm) {
         Some(pumpl),
         None,
         None,
-        hz(25_000),
+        hz(50),
         Default::default(),
     );
     let pump_pwm_channels = pump_pwm_driver.split();
@@ -207,47 +207,42 @@ async fn pwm(pins: Pwm) {
             Output::new(pins.enable_pumpl, Level::Low, Speed::Low),
             Output::new(pins.enable_pumpr, Level::Low, Speed::Low),
         );
-
     
-    loop {
-        let message = CAN_PWM_CHANNEL.wait().await;
-        match message.mission_status() {
-            can_2::CarMissionStatusMissionStatus::MissionRunning => {
-                if !first_rtd {
-                    pwm_pump.duty = min(percent_to_duty(100), pwm_pump.duty.saturating_add(13107));
-                    pwm_pump.set_duty_left(pwm_pump.duty);
-                    pwm_pump.set_duty_right(pwm_pump.duty);
-                    pwm_fanrad.duty = min(percent_to_duty(100), pwm_fanrad.duty.saturating_add(13107));
-                    pwm_fanrad.set_duty_left(pwm_fanrad.duty);
-                    pwm_fanrad.set_duty_right(pwm_fanrad.duty);
-                    
-                    pwm_fanrad.set_level( 0, true);
-                    pwm_fanbatt.set_level( 0, true);
-                    pwm_pump.set_level(0, true);
+    embassy_time::Timer::after_millis(8000).await;
+    
+    pwm_pump.duty = percent_to_duty(100);
+    pwm_pump.set_duty_left(pwm_pump.duty);
+    pwm_pump.set_duty_right(pwm_pump.duty);
+    pwm_fanrad.duty = percent_to_duty(100);
+    pwm_fanrad.set_duty_left(pwm_fanrad.duty);
+    pwm_fanrad.set_duty_right(pwm_fanrad.duty);
+    
+    embassy_time::Timer::after_millis(1000).await;
+    
+    pwm_fanrad.set_level( 0, true);
+    pwm_fanbatt.set_level( 0, true);
+    pwm_pump.set_level(0, true);
 
-                    embassy_time::Timer::after_millis(1000).await;
+    embassy_time::Timer::after_millis(1000).await;
 
-                    pwm_pump.duty = min(percent_to_duty(50), pwm_pump.duty.saturating_add(13107));
-                    pwm_pump.set_duty_left(pwm_pump.duty);
-                    pwm_pump.set_duty_right(pwm_pump.duty);
-                    pwm_fanrad.duty = min(percent_to_duty(50), pwm_fanrad.duty.saturating_add(13107));
-                    pwm_fanrad.set_duty_left(pwm_fanrad.duty);
-                    pwm_fanrad.set_duty_right(pwm_fanrad.duty);
-                    first_rtd = true;
-                }
-                pwm_pump.set_duty(percent_to_duty(100)).await;
-                pwm_fanbatt.set_duty(percent_to_duty(100)).await;
-                pwm_fanrad.set_duty(percent_to_duty(80)).await;
-            },
-            _ => {
-                if first_rtd {
-                    pwm_fanrad.set_duty(percent_to_duty(50)).await;
-                    pwm_fanbatt.set_duty(percent_to_duty(0)).await;
-                    pwm_pump.set_duty(percent_to_duty(0)).await;
-                }
-            }
-        }
-    }
+    pwm_pump.duty = percent_to_duty(50);
+    pwm_pump.set_duty_left(pwm_pump.duty);
+    pwm_pump.set_duty_right(pwm_pump.duty);
+    pwm_fanrad.duty = percent_to_duty(50);
+    pwm_fanrad.set_duty_left(pwm_fanrad.duty);
+    pwm_fanrad.set_duty_right(pwm_fanrad.duty);
+
+    embassy_time::Timer::after_millis(1000).await;
+    
+    pwm_fanrad.set_duty(percent_to_duty(80)).await;
+    pwm_fanbatt.set_duty(percent_to_duty(100)).await;
+    pwm_pump.set_duty(percent_to_duty(80)).await;
+
+    embassy_time::Timer::after_millis(30000).await;
+
+    pwm_fanrad.set_duty(percent_to_duty(50)).await;
+    pwm_fanbatt.set_duty(percent_to_duty(0)).await;
+    pwm_pump.set_duty(percent_to_duty(50)).await;
 }
 
 #[embassy_executor::task]
