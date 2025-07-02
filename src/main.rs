@@ -21,18 +21,26 @@ use embassy_sync::{
 use embassy_time::{Duration, Ticker};
 
 use defmt::*;
+use embedded_hal::blocking::can;
 use static_cell::StaticCell;
 
 mod can_management;
 mod pins;
 mod pwm_management;
-use crate::can_management::{messages as can_2, CanController, CanFrame};
+use crate::can_management::{
+    messages::{self as can_2, BmsLvEmergency},
+    CanController, CanFrame,
+};
 use crate::pins::*;
 use crate::pwm_management::PwmDualController;
 
 static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
 
-static CAN_PWM_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CarMissionStatus> = Signal::new();
+static CAN_PWM_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CoolingControl> = Signal::new();
+static CAN_BMS_EMERGENCY_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+static CAN_MISSIONSTATUS_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CarMissionStatus> =
+    Signal::new();
+
 static CAN_RF_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM1> = Signal::new();
 static CAN_ENABLES_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM2> = Signal::new();
 static CAN_DRIVER_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
@@ -63,8 +71,12 @@ async fn main(_spawner: Spawner) {
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
                 can_2::Driver::MESSAGE_ID as u16
             ))),
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
+                can_2::CoolingControl::MESSAGE_ID as u16
+            ))),
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
+                can_2::BmsLvEmergency::MESSAGE_ID as u16
+            ))),
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
         ]),
     );
@@ -137,8 +149,6 @@ fn percent_to_duty(val: u8) -> u16 {
 
 #[embassy_executor::task]
 async fn pwm(pins: Pwm) {
-    let mut first_rtd = false;
-
     let fanradl = PwmPin::new_ch4(pins.pwm_fanradl, OutputType::PushPull);
     let fanradr = PwmPin::new_ch3(pins.pwm_fanradr, OutputType::PushPull);
     let fanrad_pwm_driver = SimplePwm::new(
@@ -211,43 +221,90 @@ async fn pwm(pins: Pwm) {
             Output::new(pins.enable_pumpr, Level::Low, Speed::Low),
         );
 
-    //INFO: ventole droni funzionanti
+    if CAN_BMS_EMERGENCY_CHANNEL.signaled() {
+        let fault_mes = can_2::PcuFault::new(true, true, true, true, true, true, true)
+            .ok()
+            .unwrap();
+        loop {
+            CAN_WRITER
+                .send((
+                    can_2::PcuFault::MESSAGE_ID as u16,
+                    can_2::PcuFault::DLC as usize,
+                    pad_array::<1, 8>(fault_mes.raw(), 0),
+                ))
+                .await;
+            embassy_time::Timer::after_millis(10).await;
+        }
+    }
+    pwm_fanbatt.set_level(0, true);
+    pwm_fanbatt.duty = percent_to_duty(100);
+    pwm_fanbatt.set_duty_left(percent_to_duty(100));
+    pwm_fanbatt.set_duty_right(percent_to_duty(100));
+
+    //INFO: calib max
     pwm_fanrad.set_level(0, false);
     pwm_fanrad.duty = percent_to_duty(10);
     pwm_fanrad.set_level(0, true);
     pwm_fanrad.set_duty_left(pwm_fanrad.duty);
     pwm_fanrad.set_duty_right(pwm_fanrad.duty);
-    embassy_time::Timer::after_millis(7_500).await;
-    pwm_fanrad.duty = percent_to_duty(5);
-    pwm_fanrad.set_duty_left(pwm_fanrad.duty);
-    pwm_fanrad.set_duty_right(pwm_fanrad.duty);
-    embassy_time::Timer::after_millis(7_500).await;
-    pwm_fanrad.set_duty(3770).await;
 
-    //INFO: pompe funzionanti
     pwm_pump.set_level(0, false);
     pwm_pump.duty = percent_to_duty(10);
     pwm_pump.set_level(0, true);
     pwm_pump.set_duty_left(pwm_pump.duty);
     pwm_pump.set_duty_right(pwm_pump.duty);
+
     embassy_time::Timer::after_millis(7_500).await;
+
+    //INFO: calib min
+    pwm_fanrad.duty = percent_to_duty(5);
+    pwm_fanrad.set_duty_left(pwm_fanrad.duty);
+    pwm_fanrad.set_duty_right(pwm_fanrad.duty);
+
     pwm_pump.duty = percent_to_duty(5);
     pwm_pump.set_duty_left(pwm_pump.duty);
     pwm_pump.set_duty_right(pwm_pump.duty);
+
     embassy_time::Timer::after_millis(7_500).await;
+
+    //INFO: ready
+
     pwm_pump.set_duty_left(5900);
     pwm_pump.set_duty_right(5570);
-
-
-    // INFO: ventole batteria funzionanti
-    pwm_fanbatt.set_level(0, true);
-    pwm_fanbatt.duty = percent_to_duty(100);
-    pwm_fanbatt.set_duty_left(percent_to_duty(100));
-    pwm_fanbatt.set_duty_right(percent_to_duty(100));
+    pwm_fanrad.set_duty(3770).await;
     pwm_fanbatt.set_duty(percent_to_duty(80)).await; //logica inversa
-
     loop {
-        embassy_time::Timer::after_secs(1).await;
+        if CAN_BMS_EMERGENCY_CHANNEL.signaled() {
+            let fault_mes = can_2::PcuFault::new(true, true, true, true, true, true, true)
+                .ok()
+                .unwrap();
+            loop {
+                CAN_WRITER
+                    .send((
+                        can_2::PcuFault::MESSAGE_ID as u16,
+                        can_2::PcuFault::DLC as usize,
+                        pad_array::<1, 8>(fault_mes.raw(), 0),
+                    ))
+                    .await;
+                embassy_time::Timer::after_millis(10).await;
+            }
+        } else if CAN_MISSIONSTATUS_CHANNEL.signaled() {
+            if CAN_MISSIONSTATUS_CHANNEL.wait().await.mission_status()
+                == can_2::CarMissionStatusMissionStatus::MissionRunning
+            {
+                pwm_fanrad.set_duty(5243).await;
+                pwm_fanbatt.set_duty(5900).await;
+                pwm_pump.set_duty_left(5900);
+                pwm_pump.set_duty_right(5570);
+            }
+        } else if CAN_PWM_CHANNEL.signaled() {
+            let mes = CAN_PWM_CHANNEL.wait().await;
+            pwm_fanrad.set_duty(mes.pwm_fanrad()).await;
+            pwm_fanbatt.set_duty(mes.pwm_fanbatt()).await;
+
+            pwm_pump.set_duty_left(mes.pwm_pumpl());
+            pwm_pump.set_duty_right(mes.pwm_pumpr());
+        }
     }
 }
 
@@ -448,6 +505,12 @@ async fn read_can(mut can: CanRx<'static>) {
                         CAN_DRIVER_CHANNEL.signal(mes.brake() > 5);
                     }
                     can_2::Messages::CarMissionStatus(mes) => {
+                        CAN_MISSIONSTATUS_CHANNEL.signal(mes);
+                    }
+                    can_2::Messages::BmsLvEmergency(_) => {
+                        CAN_BMS_EMERGENCY_CHANNEL.signal(true);
+                    }
+                    can_2::Messages::CoolingControl(mes) => {
                         CAN_PWM_CHANNEL.signal(mes);
                     }
                     _ => {}

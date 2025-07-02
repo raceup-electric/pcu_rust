@@ -17,6 +17,8 @@ use arbitrary::{Arbitrary, Unstructured};
 #[derive(Clone)]
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub enum Messages {
+    /// BmsLvEmergency
+    BmsLvEmergency(BmsLvEmergency),
     /// ResGO
     ResGo(ResGo),
     /// EbsStatus
@@ -89,12 +91,16 @@ pub enum Messages {
     PcuSwControl(PcuSwControl),
     /// PcuRfAck
     PcuRfAck(PcuRfAck),
+    /// EmbeddedAliveCheck
+    EmbeddedAliveCheck(EmbeddedAliveCheck),
     /// PcuAdc1
     PcuAdc1(PcuAdc1),
     /// PcuAdc2
     PcuAdc2(PcuAdc2),
     /// PcuAdc3
     PcuAdc3(PcuAdc3),
+    /// coolingControl
+    CoolingControl(CoolingControl),
     /// Lem
     Lem(Lem),
 }
@@ -105,6 +111,7 @@ impl Messages {
     pub fn from_can_message(id: u32, payload: &[u8]) -> Result<Self, CanError> {
         
         let res = match id {
+            20 => Messages::BmsLvEmergency(BmsLvEmergency::try_from(payload)?),
             32 => Messages::ResGo(ResGo::try_from(payload)?),
             60 => Messages::EbsStatus(EbsStatus::try_from(payload)?),
             65 => Messages::Asms(Asms::try_from(payload)?),
@@ -141,13 +148,117 @@ impl Messages {
             306 => Messages::CalibAck(CalibAck::try_from(payload)?),
             307 => Messages::PcuSwControl(PcuSwControl::try_from(payload)?),
             308 => Messages::PcuRfAck(PcuRfAck::try_from(payload)?),
+            310 => Messages::EmbeddedAliveCheck(EmbeddedAliveCheck::try_from(payload)?),
             331 => Messages::PcuAdc1(PcuAdc1::try_from(payload)?),
             332 => Messages::PcuAdc2(PcuAdc2::try_from(payload)?),
             333 => Messages::PcuAdc3(PcuAdc3::try_from(payload)?),
+            334 => Messages::CoolingControl(CoolingControl::try_from(payload)?),
             962 => Messages::Lem(Lem::try_from(payload)?),
             n => return Err(CanError::UnknownMessageId(n)),
         };
         Ok(res)
+    }
+}
+
+/// BmsLvEmergency
+///
+/// - ID: 20 (0x14)
+/// - Size: 1 bytes
+/// - Transmitter: BMSLV
+#[derive(Clone, Copy)]
+pub struct BmsLvEmergency {
+    raw: [u8; 1],
+}
+
+impl BmsLvEmergency {
+    pub const MESSAGE_ID: u32 = 20;
+    pub const DLC: u8 = 1;
+    
+    
+    /// Construct new BmsLvEmergency from values
+    pub fn new(no_matter_what: bool) -> Result<Self, CanError> {
+        let mut res = Self { raw: [0u8; 1] };
+        res.set_no_matter_what(no_matter_what)?;
+        Ok(res)
+    }
+    
+    /// Construct new BmsLvEmergency from raw
+    pub fn new_from_raw(raw: [u8;1] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
+    /// Access message payload raw value
+    pub fn raw(&self) -> &[u8; 1] {
+        &self.raw
+    }
+    
+    /// no_matter_what
+    ///
+    /// - Min: 0
+    /// - Max: 1
+    /// - Unit: ""
+    /// - Receivers: Vector__XXX
+    #[inline(always)]
+    pub fn no_matter_what(&self) -> bool {
+        self.no_matter_what_raw()
+    }
+    
+    /// Get raw value of no_matter_what
+    ///
+    /// - Start bit: 0
+    /// - Signal size: 1 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn no_matter_what_raw(&self) -> bool {
+        let signal = self.raw.view_bits::<Lsb0>()[0..1].load_le::<u8>();
+        
+        signal == 1
+    }
+    
+    /// Set value of no_matter_what
+    #[inline(always)]
+    pub fn set_no_matter_what(&mut self, value: bool) -> Result<(), CanError> {
+        let value = value as u8;
+        self.raw.view_bits_mut::<Lsb0>()[0..1].store_le(value);
+        Ok(())
+    }
+    
+}
+
+impl core::convert::TryFrom<&[u8]> for BmsLvEmergency {
+    type Error = CanError;
+    
+    #[inline(always)]
+    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
+        if payload.len() < 1 { return Err(CanError::InvalidPayloadSize); }
+        let mut raw = [0u8; 1];
+        raw.copy_from_slice(&payload[..1]);
+        Ok(Self { raw })
+    }
+}
+
+#[cfg(feature = "debug")]
+impl core::fmt::Debug for BmsLvEmergency {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if f.alternate() {
+            f.debug_struct("BmsLvEmergency")
+                .field("no_matter_what", &self.no_matter_what())
+            .finish()
+        } else {
+            f.debug_tuple("BmsLvEmergency").field(&self.raw).finish()
+        }
+    }
+}
+
+#[cfg(feature = "arb")]
+impl<'a> Arbitrary<'a> for BmsLvEmergency {
+    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
+        let no_matter_what = u.int_in_range(0..=1)? == 1;
+        BmsLvEmergency::new(no_matter_what).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 
@@ -1745,16 +1856,16 @@ impl<'a> Arbitrary<'a> for Driver {
 /// BmsLv1
 ///
 /// - ID: 84 (0x54)
-/// - Size: 8 bytes
+/// - Size: 7 bytes
 /// - Transmitter: BMSHV
 #[derive(Clone, Copy)]
 pub struct BmsLv1 {
-    raw: [u8; 8],
+    raw: [u8; 7],
 }
 
 impl BmsLv1 {
     pub const MESSAGE_ID: u32 = 84;
-    pub const DLC: u8 = 8;
+    pub const DLC: u8 = 7;
     
     pub const MAX_VOLT_MIN: f32 = 0_f32;
     pub const MAX_VOLT_MAX: f32 = 0_f32;
@@ -1762,27 +1873,27 @@ impl BmsLv1 {
     pub const MIN_VOLT_MAX: f32 = 0_f32;
     pub const AVG_VOLT_MIN: f32 = 0_f32;
     pub const AVG_VOLT_MAX: f32 = 0_f32;
-    pub const TOT_VOLT_MIN: u16 = 0_u16;
-    pub const TOT_VOLT_MAX: u16 = 0_u16;
+    pub const SOC_MIN: u8 = 0_u8;
+    pub const SOC_MAX: u8 = 100_u8;
     
     /// Construct new BmsLv1 from values
-    pub fn new(max_volt: f32, min_volt: f32, avg_volt: f32, tot_volt: u16) -> Result<Self, CanError> {
-        let mut res = Self { raw: [0u8; 8] };
+    pub fn new(max_volt: f32, min_volt: f32, avg_volt: f32, soc: u8) -> Result<Self, CanError> {
+        let mut res = Self { raw: [0u8; 7] };
         res.set_max_volt(max_volt)?;
         res.set_min_volt(min_volt)?;
         res.set_avg_volt(avg_volt)?;
-        res.set_tot_volt(tot_volt)?;
+        res.set_soc(soc)?;
         Ok(res)
     }
     
     /// Construct new BmsLv1 from raw
-    pub fn new_from_raw(raw: [u8;8] ) -> Result<Self, CanError> {
+    pub fn new_from_raw(raw: [u8;7] ) -> Result<Self, CanError> {
         let res = Self { raw };
         Ok(res)
     }
     
     /// Access message payload raw value
-    pub fn raw(&self) -> &[u8; 8] {
+    pub fn raw(&self) -> &[u8; 7] {
         &self.raw
     }
     
@@ -1915,40 +2026,40 @@ impl BmsLv1 {
         Ok(())
     }
     
-    /// tot_volt
+    /// soc
     ///
     /// - Min: 0
-    /// - Max: 0
-    /// - Unit: "V"
+    /// - Max: 100
+    /// - Unit: "%"
     /// - Receivers: VCU, SW
     #[inline(always)]
-    pub fn tot_volt(&self) -> u16 {
-        self.tot_volt_raw()
+    pub fn soc(&self) -> u8 {
+        self.soc_raw()
     }
     
-    /// Get raw value of tot_volt
+    /// Get raw value of soc
     ///
     /// - Start bit: 48
-    /// - Signal size: 16 bits
+    /// - Signal size: 8 bits
     /// - Factor: 1
     /// - Offset: 0
     /// - Byte order: LittleEndian
     /// - Value type: Unsigned
     #[inline(always)]
-    pub fn tot_volt_raw(&self) -> u16 {
-        let signal = self.raw.view_bits::<Lsb0>()[48..64].load_le::<u16>();
+    pub fn soc_raw(&self) -> u8 {
+        let signal = self.raw.view_bits::<Lsb0>()[48..56].load_le::<u8>();
         
         signal
     }
     
-    /// Set value of tot_volt
+    /// Set value of soc
     #[inline(always)]
-    pub fn set_tot_volt(&mut self, value: u16) -> Result<(), CanError> {
+    pub fn set_soc(&mut self, value: u8) -> Result<(), CanError> {
         #[cfg(feature = "range_checked")]
-        if value < 0_u16 || 0_u16 < value {
+        if value < 0_u8 || 100_u8 < value {
             return Err(CanError::ParameterOutOfRange { message_id: 84 });
         }
-        self.raw.view_bits_mut::<Lsb0>()[48..64].store_le(value);
+        self.raw.view_bits_mut::<Lsb0>()[48..56].store_le(value);
         Ok(())
     }
     
@@ -1959,9 +2070,9 @@ impl core::convert::TryFrom<&[u8]> for BmsLv1 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() < 8 { return Err(CanError::InvalidPayloadSize); }
-        let mut raw = [0u8; 8];
-        raw.copy_from_slice(&payload[..8]);
+        if payload.len() < 7 { return Err(CanError::InvalidPayloadSize); }
+        let mut raw = [0u8; 7];
+        raw.copy_from_slice(&payload[..7]);
         Ok(Self { raw })
     }
 }
@@ -1974,7 +2085,7 @@ impl core::fmt::Debug for BmsLv1 {
                 .field("max_volt", &self.max_volt())
                 .field("min_volt", &self.min_volt())
                 .field("avg_volt", &self.avg_volt())
-                .field("tot_volt", &self.tot_volt())
+                .field("soc", &self.soc())
             .finish()
         } else {
             f.debug_tuple("BmsLv1").field(&self.raw).finish()
@@ -1988,24 +2099,24 @@ impl<'a> Arbitrary<'a> for BmsLv1 {
         let max_volt = u.float_in_range(0_f32..=0_f32)?;
         let min_volt = u.float_in_range(0_f32..=0_f32)?;
         let avg_volt = u.float_in_range(0_f32..=0_f32)?;
-        let tot_volt = u.int_in_range(0..=0)?;
-        BmsLv1::new(max_volt,min_volt,avg_volt,tot_volt).map_err(|_| arbitrary::Error::IncorrectFormat)
+        let soc = u.int_in_range(0..=100)?;
+        BmsLv1::new(max_volt,min_volt,avg_volt,soc).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 
 /// BmsLv2
 ///
 /// - ID: 85 (0x55)
-/// - Size: 6 bytes
+/// - Size: 7 bytes
 /// - Transmitter: BMSHV
 #[derive(Clone, Copy)]
 pub struct BmsLv2 {
-    raw: [u8; 6],
+    raw: [u8; 7],
 }
 
 impl BmsLv2 {
     pub const MESSAGE_ID: u32 = 85;
-    pub const DLC: u8 = 6;
+    pub const DLC: u8 = 7;
     
     pub const MAX_TEMP_MIN: u16 = 0_u16;
     pub const MAX_TEMP_MAX: u16 = 0_u16;
@@ -2013,24 +2124,27 @@ impl BmsLv2 {
     pub const MIN_TEMP_MAX: u16 = 0_u16;
     pub const AVG_TEMP_MIN: u16 = 0_u16;
     pub const AVG_TEMP_MAX: u16 = 0_u16;
+    pub const FAN_SPEED_MIN: u8 = 0_u8;
+    pub const FAN_SPEED_MAX: u8 = 100_u8;
     
     /// Construct new BmsLv2 from values
-    pub fn new(max_temp: u16, min_temp: u16, avg_temp: u16) -> Result<Self, CanError> {
-        let mut res = Self { raw: [0u8; 6] };
+    pub fn new(max_temp: u16, min_temp: u16, avg_temp: u16, fan_speed: u8) -> Result<Self, CanError> {
+        let mut res = Self { raw: [0u8; 7] };
         res.set_max_temp(max_temp)?;
         res.set_min_temp(min_temp)?;
         res.set_avg_temp(avg_temp)?;
+        res.set_fan_speed(fan_speed)?;
         Ok(res)
     }
     
     /// Construct new BmsLv2 from raw
-    pub fn new_from_raw(raw: [u8;6] ) -> Result<Self, CanError> {
+    pub fn new_from_raw(raw: [u8;7] ) -> Result<Self, CanError> {
         let res = Self { raw };
         Ok(res)
     }
     
     /// Access message payload raw value
-    pub fn raw(&self) -> &[u8; 6] {
+    pub fn raw(&self) -> &[u8; 7] {
         &self.raw
     }
     
@@ -2145,6 +2259,43 @@ impl BmsLv2 {
         Ok(())
     }
     
+    /// fan_speed
+    ///
+    /// - Min: 0
+    /// - Max: 100
+    /// - Unit: "%"
+    /// - Receivers: VCU, SW
+    #[inline(always)]
+    pub fn fan_speed(&self) -> u8 {
+        self.fan_speed_raw()
+    }
+    
+    /// Get raw value of fan_speed
+    ///
+    /// - Start bit: 48
+    /// - Signal size: 8 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn fan_speed_raw(&self) -> u8 {
+        let signal = self.raw.view_bits::<Lsb0>()[48..56].load_le::<u8>();
+        
+        signal
+    }
+    
+    /// Set value of fan_speed
+    #[inline(always)]
+    pub fn set_fan_speed(&mut self, value: u8) -> Result<(), CanError> {
+        #[cfg(feature = "range_checked")]
+        if value < 0_u8 || 100_u8 < value {
+            return Err(CanError::ParameterOutOfRange { message_id: 85 });
+        }
+        self.raw.view_bits_mut::<Lsb0>()[48..56].store_le(value);
+        Ok(())
+    }
+    
 }
 
 impl core::convert::TryFrom<&[u8]> for BmsLv2 {
@@ -2152,9 +2303,9 @@ impl core::convert::TryFrom<&[u8]> for BmsLv2 {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() < 6 { return Err(CanError::InvalidPayloadSize); }
-        let mut raw = [0u8; 6];
-        raw.copy_from_slice(&payload[..6]);
+        if payload.len() < 7 { return Err(CanError::InvalidPayloadSize); }
+        let mut raw = [0u8; 7];
+        raw.copy_from_slice(&payload[..7]);
         Ok(Self { raw })
     }
 }
@@ -2167,6 +2318,7 @@ impl core::fmt::Debug for BmsLv2 {
                 .field("max_temp", &self.max_temp())
                 .field("min_temp", &self.min_temp())
                 .field("avg_temp", &self.avg_temp())
+                .field("fan_speed", &self.fan_speed())
             .finish()
         } else {
             f.debug_tuple("BmsLv2").field(&self.raw).finish()
@@ -2180,7 +2332,8 @@ impl<'a> Arbitrary<'a> for BmsLv2 {
         let max_temp = u.int_in_range(0..=0)?;
         let min_temp = u.int_in_range(0..=0)?;
         let avg_temp = u.int_in_range(0..=0)?;
-        BmsLv2::new(max_temp,min_temp,avg_temp).map_err(|_| arbitrary::Error::IncorrectFormat)
+        let fan_speed = u.int_in_range(0..=100)?;
+        BmsLv2::new(max_temp,min_temp,avg_temp,fan_speed).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 
@@ -3459,29 +3612,29 @@ impl<'a> Arbitrary<'a> for Map {
 /// CarStatus
 ///
 /// - ID: 101 (0x65)
-/// - Size: 8 bytes
+/// - Size: 4 bytes
 /// - Transmitter: VCU
 #[derive(Clone, Copy)]
 pub struct CarStatus {
-    raw: [u8; 8],
+    raw: [u8; 4],
 }
 
 impl CarStatus {
     pub const MESSAGE_ID: u32 = 101;
-    pub const DLC: u8 = 8;
+    pub const DLC: u8 = 4;
     
     pub const RUNNING_STATUS_MIN: u8 = 0_u8;
     pub const RUNNING_STATUS_MAX: u8 = 3_u8;
     pub const SPEED_MIN: u8 = 0_u8;
     pub const SPEED_MAX: u8 = 0_u8;
     pub const BRAKE_FRONT_PRESS_MIN: f32 = 0_f32;
-    pub const BRAKE_FRONT_PRESS_MAX: f32 = 65_f32;
+    pub const BRAKE_FRONT_PRESS_MAX: f32 = 60_f32;
     pub const BRAKE_REAR_PRESS_MIN: f32 = 0_f32;
-    pub const BRAKE_REAR_PRESS_MAX: f32 = 65_f32;
+    pub const BRAKE_REAR_PRESS_MAX: f32 = 60_f32;
     
     /// Construct new CarStatus from values
     pub fn new(hv: bool, air1: bool, precharge: bool, as_node: bool, scs: bool, rtd_req: bool, running_status: u8, speed: u8, brake_front_press: f32, brake_rear_press: f32) -> Result<Self, CanError> {
-        let mut res = Self { raw: [0u8; 8] };
+        let mut res = Self { raw: [0u8; 4] };
         res.set_hv(hv)?;
         res.set_air1(air1)?;
         res.set_precharge(precharge)?;
@@ -3496,13 +3649,13 @@ impl CarStatus {
     }
     
     /// Construct new CarStatus from raw
-    pub fn new_from_raw(raw: [u8;8] ) -> Result<Self, CanError> {
+    pub fn new_from_raw(raw: [u8;4] ) -> Result<Self, CanError> {
         let res = Self { raw };
         Ok(res)
     }
     
     /// Access message payload raw value
-    pub fn raw(&self) -> &[u8; 8] {
+    pub fn raw(&self) -> &[u8; 4] {
         &self.raw
     }
     
@@ -3612,7 +3765,7 @@ impl CarStatus {
     ///
     /// - Min: 0
     /// - Max: 0
-    /// - Unit: " Closed/Open"
+    /// - Unit: " Open/Closed"
     /// - Receivers: Vector__XXX
     #[inline(always)]
     pub fn as_node(&self) -> bool {
@@ -3646,7 +3799,7 @@ impl CarStatus {
     ///
     /// - Min: 0
     /// - Max: 0
-    /// - Unit: " Closed/Open"
+    /// - Unit: " Open/Closed"
     /// - Receivers: Vector__XXX
     #[inline(always)]
     pub fn scs(&self) -> bool {
@@ -3768,7 +3921,7 @@ impl CarStatus {
     
     /// Get raw value of speed
     ///
-    /// - Start bit: 9
+    /// - Start bit: 8
     /// - Signal size: 8 bits
     /// - Factor: 1
     /// - Offset: 0
@@ -3776,7 +3929,7 @@ impl CarStatus {
     /// - Value type: Unsigned
     #[inline(always)]
     pub fn speed_raw(&self) -> u8 {
-        let signal = self.raw.view_bits::<Lsb0>()[9..17].load_le::<u8>();
+        let signal = self.raw.view_bits::<Lsb0>()[8..16].load_le::<u8>();
         
         signal
     }
@@ -3788,14 +3941,14 @@ impl CarStatus {
         if value < 0_u8 || 0_u8 < value {
             return Err(CanError::ParameterOutOfRange { message_id: 101 });
         }
-        self.raw.view_bits_mut::<Lsb0>()[9..17].store_le(value);
+        self.raw.view_bits_mut::<Lsb0>()[8..16].store_le(value);
         Ok(())
     }
     
     /// brake_front_press
     ///
     /// - Min: 0
-    /// - Max: 65
+    /// - Max: 60
     /// - Unit: "Bar"
     /// - Receivers: Vector__XXX
     #[inline(always)]
@@ -3805,17 +3958,17 @@ impl CarStatus {
     
     /// Get raw value of brake_front_press
     ///
-    /// - Start bit: 17
-    /// - Signal size: 16 bits
-    /// - Factor: 0.001
+    /// - Start bit: 16
+    /// - Signal size: 8 bits
+    /// - Factor: 0.25
     /// - Offset: 0
     /// - Byte order: LittleEndian
     /// - Value type: Unsigned
     #[inline(always)]
     pub fn brake_front_press_raw(&self) -> f32 {
-        let signal = self.raw.view_bits::<Lsb0>()[17..33].load_le::<u16>();
+        let signal = self.raw.view_bits::<Lsb0>()[16..24].load_le::<u8>();
         
-        let factor = 0.001_f32;
+        let factor = 0.25_f32;
         let offset = 0_f32;
         (signal as f32) * factor + offset
     }
@@ -3824,21 +3977,21 @@ impl CarStatus {
     #[inline(always)]
     pub fn set_brake_front_press(&mut self, value: f32) -> Result<(), CanError> {
         #[cfg(feature = "range_checked")]
-        if value < 0_f32 || 65_f32 < value {
+        if value < 0_f32 || 60_f32 < value {
             return Err(CanError::ParameterOutOfRange { message_id: 101 });
         }
-        let factor = 0.001_f32;
+        let factor = 0.25_f32;
         let offset = 0_f32;
-        let value = ((value - offset) / factor) as u16;
+        let value = ((value - offset) / factor) as u8;
         
-        self.raw.view_bits_mut::<Lsb0>()[17..33].store_le(value);
+        self.raw.view_bits_mut::<Lsb0>()[16..24].store_le(value);
         Ok(())
     }
     
     /// brake_rear_press
     ///
     /// - Min: 0
-    /// - Max: 65
+    /// - Max: 60
     /// - Unit: "Bar"
     /// - Receivers: Vector__XXX
     #[inline(always)]
@@ -3848,17 +4001,17 @@ impl CarStatus {
     
     /// Get raw value of brake_rear_press
     ///
-    /// - Start bit: 33
-    /// - Signal size: 16 bits
-    /// - Factor: 0.001
+    /// - Start bit: 24
+    /// - Signal size: 8 bits
+    /// - Factor: 0.25
     /// - Offset: 0
     /// - Byte order: LittleEndian
     /// - Value type: Unsigned
     #[inline(always)]
     pub fn brake_rear_press_raw(&self) -> f32 {
-        let signal = self.raw.view_bits::<Lsb0>()[33..49].load_le::<u16>();
+        let signal = self.raw.view_bits::<Lsb0>()[24..32].load_le::<u8>();
         
-        let factor = 0.001_f32;
+        let factor = 0.25_f32;
         let offset = 0_f32;
         (signal as f32) * factor + offset
     }
@@ -3867,14 +4020,14 @@ impl CarStatus {
     #[inline(always)]
     pub fn set_brake_rear_press(&mut self, value: f32) -> Result<(), CanError> {
         #[cfg(feature = "range_checked")]
-        if value < 0_f32 || 65_f32 < value {
+        if value < 0_f32 || 60_f32 < value {
             return Err(CanError::ParameterOutOfRange { message_id: 101 });
         }
-        let factor = 0.001_f32;
+        let factor = 0.25_f32;
         let offset = 0_f32;
-        let value = ((value - offset) / factor) as u16;
+        let value = ((value - offset) / factor) as u8;
         
-        self.raw.view_bits_mut::<Lsb0>()[33..49].store_le(value);
+        self.raw.view_bits_mut::<Lsb0>()[24..32].store_le(value);
         Ok(())
     }
     
@@ -3885,9 +4038,9 @@ impl core::convert::TryFrom<&[u8]> for CarStatus {
     
     #[inline(always)]
     fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
-        if payload.len() < 8 { return Err(CanError::InvalidPayloadSize); }
-        let mut raw = [0u8; 8];
-        raw.copy_from_slice(&payload[..8]);
+        if payload.len() < 4 { return Err(CanError::InvalidPayloadSize); }
+        let mut raw = [0u8; 4];
+        raw.copy_from_slice(&payload[..4]);
         Ok(Self { raw })
     }
 }
@@ -3925,8 +4078,8 @@ impl<'a> Arbitrary<'a> for CarStatus {
         let rtd_req = u.int_in_range(0..=1)? == 1;
         let running_status = u.int_in_range(0..=3)?;
         let speed = u.int_in_range(0..=0)?;
-        let brake_front_press = u.float_in_range(0_f32..=65_f32)?;
-        let brake_rear_press = u.float_in_range(0_f32..=65_f32)?;
+        let brake_front_press = u.float_in_range(0_f32..=60_f32)?;
+        let brake_rear_press = u.float_in_range(0_f32..=60_f32)?;
         CarStatus::new(hv,air1,precharge,as_node,scs,rtd_req,running_status,speed,brake_front_press,brake_rear_press).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
@@ -6148,13 +6301,13 @@ impl HydraulicPressure {
     pub const MESSAGE_ID: u32 = 264;
     pub const DLC: u8 = 8;
     
-    pub const PRESS_FRONT_MIN: u32 = 0_u32;
-    pub const PRESS_FRONT_MAX: u32 = 0_u32;
-    pub const PRESS_REAR_MIN: u32 = 0_u32;
-    pub const PRESS_REAR_MAX: u32 = 0_u32;
+    pub const PRESS_FRONT_MIN: f32 = 0_f32;
+    pub const PRESS_FRONT_MAX: f32 = 0_f32;
+    pub const PRESS_REAR_MIN: f32 = 0_f32;
+    pub const PRESS_REAR_MAX: f32 = 0_f32;
     
     /// Construct new HydraulicPressure from values
-    pub fn new(press_front: u32, press_rear: u32) -> Result<Self, CanError> {
+    pub fn new(press_front: f32, press_rear: f32) -> Result<Self, CanError> {
         let mut res = Self { raw: [0u8; 8] };
         res.set_press_front(press_front)?;
         res.set_press_rear(press_rear)?;
@@ -6178,10 +6331,10 @@ impl HydraulicPressure {
     ///
     /// - Min: 0
     /// - Max: 0
-    /// - Unit: " Bar"
-    /// - Receivers: Vector__XXX
+    /// - Unit: "Bar"
+    /// - Receivers: EBS, VCU
     #[inline(always)]
-    pub fn press_front(&self) -> u32 {
+    pub fn press_front(&self) -> f32 {
         self.press_front_raw()
     }
     
@@ -6189,24 +6342,30 @@ impl HydraulicPressure {
     ///
     /// - Start bit: 0
     /// - Signal size: 32 bits
-    /// - Factor: 1
+    /// - Factor: 0.25
     /// - Offset: 0
     /// - Byte order: LittleEndian
     /// - Value type: Unsigned
     #[inline(always)]
-    pub fn press_front_raw(&self) -> u32 {
+    pub fn press_front_raw(&self) -> f32 {
         let signal = self.raw.view_bits::<Lsb0>()[0..32].load_le::<u32>();
         
-        signal
+        let factor = 0.25_f32;
+        let offset = 0_f32;
+        (signal as f32) * factor + offset
     }
     
     /// Set value of PressFront
     #[inline(always)]
-    pub fn set_press_front(&mut self, value: u32) -> Result<(), CanError> {
+    pub fn set_press_front(&mut self, value: f32) -> Result<(), CanError> {
         #[cfg(feature = "range_checked")]
-        if value < 0_u32 || 0_u32 < value {
+        if value < 0_f32 || 0_f32 < value {
             return Err(CanError::ParameterOutOfRange { message_id: 264 });
         }
+        let factor = 0.25_f32;
+        let offset = 0_f32;
+        let value = ((value - offset) / factor) as u32;
+        
         self.raw.view_bits_mut::<Lsb0>()[0..32].store_le(value);
         Ok(())
     }
@@ -6217,10 +6376,10 @@ impl HydraulicPressure {
     ///
     /// - Min: 0
     /// - Max: 0
-    /// - Unit: " Bar"
-    /// - Receivers: Vector__XXX
+    /// - Unit: "Bar"
+    /// - Receivers: EBS, VCU
     #[inline(always)]
-    pub fn press_rear(&self) -> u32 {
+    pub fn press_rear(&self) -> f32 {
         self.press_rear_raw()
     }
     
@@ -6228,24 +6387,30 @@ impl HydraulicPressure {
     ///
     /// - Start bit: 32
     /// - Signal size: 32 bits
-    /// - Factor: 1
+    /// - Factor: 0.25
     /// - Offset: 0
     /// - Byte order: LittleEndian
     /// - Value type: Unsigned
     #[inline(always)]
-    pub fn press_rear_raw(&self) -> u32 {
+    pub fn press_rear_raw(&self) -> f32 {
         let signal = self.raw.view_bits::<Lsb0>()[32..64].load_le::<u32>();
         
-        signal
+        let factor = 0.25_f32;
+        let offset = 0_f32;
+        (signal as f32) * factor + offset
     }
     
     /// Set value of PressRear
     #[inline(always)]
-    pub fn set_press_rear(&mut self, value: u32) -> Result<(), CanError> {
+    pub fn set_press_rear(&mut self, value: f32) -> Result<(), CanError> {
         #[cfg(feature = "range_checked")]
-        if value < 0_u32 || 0_u32 < value {
+        if value < 0_f32 || 0_f32 < value {
             return Err(CanError::ParameterOutOfRange { message_id: 264 });
         }
+        let factor = 0.25_f32;
+        let offset = 0_f32;
+        let value = ((value - offset) / factor) as u32;
+        
         self.raw.view_bits_mut::<Lsb0>()[32..64].store_le(value);
         Ok(())
     }
@@ -6281,8 +6446,8 @@ impl core::fmt::Debug for HydraulicPressure {
 #[cfg(feature = "arb")]
 impl<'a> Arbitrary<'a> for HydraulicPressure {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
-        let press_front = u.int_in_range(0..=0)?;
-        let press_rear = u.int_in_range(0..=0)?;
+        let press_front = u.float_in_range(0_f32..=0_f32)?;
+        let press_rear = u.float_in_range(0_f32..=0_f32)?;
         HydraulicPressure::new(press_front,press_rear).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
@@ -6412,18 +6577,6 @@ impl Pcu {
     
     pub const MODE_MIN: u8 = 0_u8;
     pub const MODE_MAX: u8 = 2_u8;
-    pub const PUMP_SPEED_LEFT_MIN: u8 = 0_u8;
-    pub const PUMP_SPEED_LEFT_MAX: u8 = 100_u8;
-    pub const PUMP_SPEED_RIGHT_MIN: u8 = 0_u8;
-    pub const PUMP_SPEED_RIGHT_MAX: u8 = 100_u8;
-    pub const FANRAD_SPEED_LEFT_MIN: u8 = 0_u8;
-    pub const FANRAD_SPEED_LEFT_MAX: u8 = 100_u8;
-    pub const FANRAD_SPEED_RIGHT_MIN: u8 = 0_u8;
-    pub const FANRAD_SPEED_RIGHT_MAX: u8 = 100_u8;
-    pub const FANBATT_SPEED_LEFT_MIN: u8 = 0_u8;
-    pub const FANBATT_SPEED_LEFT_MAX: u8 = 100_u8;
-    pub const FANBATT_SPEED_RIGHT_MIN: u8 = 0_u8;
-    pub const FANBATT_SPEED_RIGHT_MAX: u8 = 100_u8;
     
     /// Construct new Pcu from values
     pub fn new(mode: u8) -> Result<Self, CanError> {
@@ -6460,7 +6613,6 @@ impl Pcu {
     
     pub fn mode(&mut self) -> Result<PcuMode, CanError> {
         match self.mode_raw() {
-            0 => Ok(PcuMode::M0(PcuModeM0{ raw: self.raw })),
             1 => Ok(PcuMode::M1(PcuModeM1{ raw: self.raw })),
             2 => Ok(PcuMode::M2(PcuModeM2{ raw: self.raw })),
             multiplexor => Err(CanError::InvalidMultiplexor { message_id: 304, multiplexor: multiplexor.into() }),
@@ -6474,16 +6626,6 @@ impl Pcu {
             return Err(CanError::ParameterOutOfRange { message_id: 304 });
         }
         self.raw.view_bits_mut::<Lsb0>()[0..2].store_le(value);
-        Ok(())
-    }
-    
-    /// Set value of mode
-    #[inline(always)]
-    pub fn set_m0(&mut self, value: PcuModeM0) -> Result<(), CanError> {
-        let b0 = BitArray::<_, LocalBits>::new(self.raw);
-        let b1 = BitArray::<_, LocalBits>::new(value.raw);
-        self.raw = b0.bitor(b1).into_inner();
-        self.set_mode(0)?;
         Ok(())
     }
     
@@ -6543,444 +6685,8 @@ impl<'a> Arbitrary<'a> for Pcu {
 /// Defined values for multiplexed signal Pcu
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub enum PcuMode {
-    M0(PcuModeM0),
     M1(PcuModeM1),
     M2(PcuModeM2),
-}
-
-#[derive(Default)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub struct PcuModeM0 { raw: [u8; 7] }
-
-impl PcuModeM0 {
-pub fn new() -> Self { Self { raw: [0u8; 7] } }
-pub fn new_from_raw(raw: [u8; 7]) -> Self { Self { raw } }
-/// pump_enable_left
-///
-/// - Min: 0
-/// - Max: 1
-/// - Unit: "on"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn pump_enable_left(&self) -> bool {
-    self.pump_enable_left_raw()
-}
-
-/// Get raw value of pump_enable_left
-///
-/// - Start bit: 8
-/// - Signal size: 1 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn pump_enable_left_raw(&self) -> bool {
-    let signal = self.raw.view_bits::<Lsb0>()[8..9].load_le::<u8>();
-    
-    signal == 1
-}
-
-/// Set value of pump_enable_left
-#[inline(always)]
-pub fn set_pump_enable_left(&mut self, value: bool) -> Result<(), CanError> {
-    let value = value as u8;
-    self.raw.view_bits_mut::<Lsb0>()[8..9].store_le(value);
-    Ok(())
-}
-
-/// pump_speed_left
-///
-/// - Min: 0
-/// - Max: 100
-/// - Unit: "%"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn pump_speed_left(&self) -> u8 {
-    self.pump_speed_left_raw()
-}
-
-/// Get raw value of pump_speed_left
-///
-/// - Start bit: 9
-/// - Signal size: 7 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn pump_speed_left_raw(&self) -> u8 {
-    let signal = self.raw.view_bits::<Lsb0>()[9..16].load_le::<u8>();
-    
-    signal
-}
-
-/// Set value of pump_speed_left
-#[inline(always)]
-pub fn set_pump_speed_left(&mut self, value: u8) -> Result<(), CanError> {
-    #[cfg(feature = "range_checked")]
-    if value < 0_u8 || 100_u8 < value {
-        return Err(CanError::ParameterOutOfRange { message_id: 304 });
-    }
-    self.raw.view_bits_mut::<Lsb0>()[9..16].store_le(value);
-    Ok(())
-}
-
-/// pump_enable_right
-///
-/// - Min: 0
-/// - Max: 1
-/// - Unit: "on"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn pump_enable_right(&self) -> bool {
-    self.pump_enable_right_raw()
-}
-
-/// Get raw value of pump_enable_right
-///
-/// - Start bit: 16
-/// - Signal size: 1 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn pump_enable_right_raw(&self) -> bool {
-    let signal = self.raw.view_bits::<Lsb0>()[16..17].load_le::<u8>();
-    
-    signal == 1
-}
-
-/// Set value of pump_enable_right
-#[inline(always)]
-pub fn set_pump_enable_right(&mut self, value: bool) -> Result<(), CanError> {
-    let value = value as u8;
-    self.raw.view_bits_mut::<Lsb0>()[16..17].store_le(value);
-    Ok(())
-}
-
-/// pump_speed_right
-///
-/// - Min: 0
-/// - Max: 100
-/// - Unit: "%"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn pump_speed_right(&self) -> u8 {
-    self.pump_speed_right_raw()
-}
-
-/// Get raw value of pump_speed_right
-///
-/// - Start bit: 17
-/// - Signal size: 7 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn pump_speed_right_raw(&self) -> u8 {
-    let signal = self.raw.view_bits::<Lsb0>()[17..24].load_le::<u8>();
-    
-    signal
-}
-
-/// Set value of pump_speed_right
-#[inline(always)]
-pub fn set_pump_speed_right(&mut self, value: u8) -> Result<(), CanError> {
-    #[cfg(feature = "range_checked")]
-    if value < 0_u8 || 100_u8 < value {
-        return Err(CanError::ParameterOutOfRange { message_id: 304 });
-    }
-    self.raw.view_bits_mut::<Lsb0>()[17..24].store_le(value);
-    Ok(())
-}
-
-/// fanrad_enable_left
-///
-/// - Min: 0
-/// - Max: 1
-/// - Unit: "on"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn fanrad_enable_left(&self) -> bool {
-    self.fanrad_enable_left_raw()
-}
-
-/// Get raw value of fanrad_enable_left
-///
-/// - Start bit: 24
-/// - Signal size: 1 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn fanrad_enable_left_raw(&self) -> bool {
-    let signal = self.raw.view_bits::<Lsb0>()[24..25].load_le::<u8>();
-    
-    signal == 1
-}
-
-/// Set value of fanrad_enable_left
-#[inline(always)]
-pub fn set_fanrad_enable_left(&mut self, value: bool) -> Result<(), CanError> {
-    let value = value as u8;
-    self.raw.view_bits_mut::<Lsb0>()[24..25].store_le(value);
-    Ok(())
-}
-
-/// fanrad_speed_left
-///
-/// - Min: 0
-/// - Max: 100
-/// - Unit: "%"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn fanrad_speed_left(&self) -> u8 {
-    self.fanrad_speed_left_raw()
-}
-
-/// Get raw value of fanrad_speed_left
-///
-/// - Start bit: 25
-/// - Signal size: 7 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn fanrad_speed_left_raw(&self) -> u8 {
-    let signal = self.raw.view_bits::<Lsb0>()[25..32].load_le::<u8>();
-    
-    signal
-}
-
-/// Set value of fanrad_speed_left
-#[inline(always)]
-pub fn set_fanrad_speed_left(&mut self, value: u8) -> Result<(), CanError> {
-    #[cfg(feature = "range_checked")]
-    if value < 0_u8 || 100_u8 < value {
-        return Err(CanError::ParameterOutOfRange { message_id: 304 });
-    }
-    self.raw.view_bits_mut::<Lsb0>()[25..32].store_le(value);
-    Ok(())
-}
-
-/// fanrad_enable_right
-///
-/// - Min: 0
-/// - Max: 1
-/// - Unit: "on"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn fanrad_enable_right(&self) -> bool {
-    self.fanrad_enable_right_raw()
-}
-
-/// Get raw value of fanrad_enable_right
-///
-/// - Start bit: 32
-/// - Signal size: 1 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn fanrad_enable_right_raw(&self) -> bool {
-    let signal = self.raw.view_bits::<Lsb0>()[32..33].load_le::<u8>();
-    
-    signal == 1
-}
-
-/// Set value of fanrad_enable_right
-#[inline(always)]
-pub fn set_fanrad_enable_right(&mut self, value: bool) -> Result<(), CanError> {
-    let value = value as u8;
-    self.raw.view_bits_mut::<Lsb0>()[32..33].store_le(value);
-    Ok(())
-}
-
-/// fanrad_speed_right
-///
-/// - Min: 0
-/// - Max: 100
-/// - Unit: "%"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn fanrad_speed_right(&self) -> u8 {
-    self.fanrad_speed_right_raw()
-}
-
-/// Get raw value of fanrad_speed_right
-///
-/// - Start bit: 33
-/// - Signal size: 7 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn fanrad_speed_right_raw(&self) -> u8 {
-    let signal = self.raw.view_bits::<Lsb0>()[33..40].load_le::<u8>();
-    
-    signal
-}
-
-/// Set value of fanrad_speed_right
-#[inline(always)]
-pub fn set_fanrad_speed_right(&mut self, value: u8) -> Result<(), CanError> {
-    #[cfg(feature = "range_checked")]
-    if value < 0_u8 || 100_u8 < value {
-        return Err(CanError::ParameterOutOfRange { message_id: 304 });
-    }
-    self.raw.view_bits_mut::<Lsb0>()[33..40].store_le(value);
-    Ok(())
-}
-
-/// fanbatt_enable_left
-///
-/// - Min: 0
-/// - Max: 1
-/// - Unit: "on"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn fanbatt_enable_left(&self) -> bool {
-    self.fanbatt_enable_left_raw()
-}
-
-/// Get raw value of fanbatt_enable_left
-///
-/// - Start bit: 40
-/// - Signal size: 1 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn fanbatt_enable_left_raw(&self) -> bool {
-    let signal = self.raw.view_bits::<Lsb0>()[40..41].load_le::<u8>();
-    
-    signal == 1
-}
-
-/// Set value of fanbatt_enable_left
-#[inline(always)]
-pub fn set_fanbatt_enable_left(&mut self, value: bool) -> Result<(), CanError> {
-    let value = value as u8;
-    self.raw.view_bits_mut::<Lsb0>()[40..41].store_le(value);
-    Ok(())
-}
-
-/// fanbatt_speed_left
-///
-/// - Min: 0
-/// - Max: 100
-/// - Unit: "%"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn fanbatt_speed_left(&self) -> u8 {
-    self.fanbatt_speed_left_raw()
-}
-
-/// Get raw value of fanbatt_speed_left
-///
-/// - Start bit: 41
-/// - Signal size: 7 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn fanbatt_speed_left_raw(&self) -> u8 {
-    let signal = self.raw.view_bits::<Lsb0>()[41..48].load_le::<u8>();
-    
-    signal
-}
-
-/// Set value of fanbatt_speed_left
-#[inline(always)]
-pub fn set_fanbatt_speed_left(&mut self, value: u8) -> Result<(), CanError> {
-    #[cfg(feature = "range_checked")]
-    if value < 0_u8 || 100_u8 < value {
-        return Err(CanError::ParameterOutOfRange { message_id: 304 });
-    }
-    self.raw.view_bits_mut::<Lsb0>()[41..48].store_le(value);
-    Ok(())
-}
-
-/// fanbatt_enable_right
-///
-/// - Min: 0
-/// - Max: 1
-/// - Unit: "on"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn fanbatt_enable_right(&self) -> bool {
-    self.fanbatt_enable_right_raw()
-}
-
-/// Get raw value of fanbatt_enable_right
-///
-/// - Start bit: 48
-/// - Signal size: 1 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn fanbatt_enable_right_raw(&self) -> bool {
-    let signal = self.raw.view_bits::<Lsb0>()[48..49].load_le::<u8>();
-    
-    signal == 1
-}
-
-/// Set value of fanbatt_enable_right
-#[inline(always)]
-pub fn set_fanbatt_enable_right(&mut self, value: bool) -> Result<(), CanError> {
-    let value = value as u8;
-    self.raw.view_bits_mut::<Lsb0>()[48..49].store_le(value);
-    Ok(())
-}
-
-/// fanbatt_speed_right
-///
-/// - Min: 0
-/// - Max: 100
-/// - Unit: "%"
-/// - Receivers: Vector__XXX
-#[inline(always)]
-pub fn fanbatt_speed_right(&self) -> u8 {
-    self.fanbatt_speed_right_raw()
-}
-
-/// Get raw value of fanbatt_speed_right
-///
-/// - Start bit: 49
-/// - Signal size: 7 bits
-/// - Factor: 1
-/// - Offset: 0
-/// - Byte order: LittleEndian
-/// - Value type: Unsigned
-#[inline(always)]
-pub fn fanbatt_speed_right_raw(&self) -> u8 {
-    let signal = self.raw.view_bits::<Lsb0>()[49..56].load_le::<u8>();
-    
-    signal
-}
-
-/// Set value of fanbatt_speed_right
-#[inline(always)]
-pub fn set_fanbatt_speed_right(&mut self, value: u8) -> Result<(), CanError> {
-    #[cfg(feature = "range_checked")]
-    if value < 0_u8 || 100_u8 < value {
-        return Err(CanError::ParameterOutOfRange { message_id: 304 });
-    }
-    self.raw.view_bits_mut::<Lsb0>()[49..56].store_le(value);
-    Ok(())
-}
-
 }
 
 #[derive(Default)]
@@ -7602,6 +7308,71 @@ impl<'a> Arbitrary<'a> for PcuRfAck {
     fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
         let rf_signal_ack = u.int_in_range(0..=1)? == 1;
         PcuRfAck::new(rf_signal_ack).map_err(|_| arbitrary::Error::IncorrectFormat)
+    }
+}
+
+/// EmbeddedAliveCheck
+///
+/// - ID: 310 (0x136)
+/// - Size: 0 bytes
+/// - Transmitter: VCU
+#[derive(Clone, Copy)]
+pub struct EmbeddedAliveCheck {
+    raw: [u8; 0],
+}
+
+impl EmbeddedAliveCheck {
+    pub const MESSAGE_ID: u32 = 310;
+    pub const DLC: u8 = 0;
+    
+    
+    /// Construct new EmbeddedAliveCheck from values
+    pub fn new() -> Result<Self, CanError> {
+        let mut res = Self { raw: [0u8; 0] };
+        Ok(res)
+    }
+    
+    /// Construct new EmbeddedAliveCheck from raw
+    pub fn new_from_raw(raw: [u8;0] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
+    /// Access message payload raw value
+    pub fn raw(&self) -> &[u8; 0] {
+        &self.raw
+    }
+    
+}
+
+impl core::convert::TryFrom<&[u8]> for EmbeddedAliveCheck {
+    type Error = CanError;
+    
+    #[inline(always)]
+    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
+        if payload.len() < 0 { return Err(CanError::InvalidPayloadSize); }
+        let mut raw = [0u8; 0];
+        raw.copy_from_slice(&payload[..0]);
+        Ok(Self { raw })
+    }
+}
+
+#[cfg(feature = "debug")]
+impl core::fmt::Debug for EmbeddedAliveCheck {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if f.alternate() {
+            f.debug_struct("EmbeddedAliveCheck")
+            .finish()
+        } else {
+            f.debug_tuple("EmbeddedAliveCheck").field(&self.raw).finish()
+        }
+    }
+}
+
+#[cfg(feature = "arb")]
+impl<'a> Arbitrary<'a> for EmbeddedAliveCheck {
+    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
+        EmbeddedAliveCheck::new().map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 
@@ -8277,6 +8048,239 @@ impl<'a> Arbitrary<'a> for PcuAdc3 {
         let adc_emb = u.float_in_range(0_f32..=30_f32)?;
         let adc_steeract = u.float_in_range(0_f32..=30_f32)?;
         PcuAdc3::new(adc_dv,adc_emb,adc_steeract).map_err(|_| arbitrary::Error::IncorrectFormat)
+    }
+}
+
+/// coolingControl
+///
+/// - ID: 334 (0x14e)
+/// - Size: 8 bytes
+/// - Transmitter: VCU
+#[derive(Clone, Copy)]
+pub struct CoolingControl {
+    raw: [u8; 8],
+}
+
+impl CoolingControl {
+    pub const MESSAGE_ID: u32 = 334;
+    pub const DLC: u8 = 8;
+    
+    pub const PWM_FANBATT_MIN: u16 = 0_u16;
+    pub const PWM_FANBATT_MAX: u16 = 65535_u16;
+    pub const PWM_FANRAD_MIN: u16 = 0_u16;
+    pub const PWM_FANRAD_MAX: u16 = 65535_u16;
+    pub const PWM_PUMPL_MIN: u16 = 0_u16;
+    pub const PWM_PUMPL_MAX: u16 = 65535_u16;
+    pub const PWM_PUMPR_MIN: u16 = 0_u16;
+    pub const PWM_PUMPR_MAX: u16 = 65535_u16;
+    
+    /// Construct new coolingControl from values
+    pub fn new(pwm_fanbatt: u16, pwm_fanrad: u16, pwm_pumpl: u16, pwm_pumpr: u16) -> Result<Self, CanError> {
+        let mut res = Self { raw: [0u8; 8] };
+        res.set_pwm_fanbatt(pwm_fanbatt)?;
+        res.set_pwm_fanrad(pwm_fanrad)?;
+        res.set_pwm_pumpl(pwm_pumpl)?;
+        res.set_pwm_pumpr(pwm_pumpr)?;
+        Ok(res)
+    }
+    
+    /// Construct new coolingControl from raw
+    pub fn new_from_raw(raw: [u8;8] ) -> Result<Self, CanError> {
+        let res = Self { raw };
+        Ok(res)
+    }
+    
+    /// Access message payload raw value
+    pub fn raw(&self) -> &[u8; 8] {
+        &self.raw
+    }
+    
+    /// pwm_fanbatt
+    ///
+    /// - Min: 0
+    /// - Max: 65535
+    /// - Unit: ""
+    /// - Receivers: Vector__XXX
+    #[inline(always)]
+    pub fn pwm_fanbatt(&self) -> u16 {
+        self.pwm_fanbatt_raw()
+    }
+    
+    /// Get raw value of pwm_fanbatt
+    ///
+    /// - Start bit: 0
+    /// - Signal size: 16 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn pwm_fanbatt_raw(&self) -> u16 {
+        let signal = self.raw.view_bits::<Lsb0>()[0..16].load_le::<u16>();
+        
+        signal
+    }
+    
+    /// Set value of pwm_fanbatt
+    #[inline(always)]
+    pub fn set_pwm_fanbatt(&mut self, value: u16) -> Result<(), CanError> {
+        #[cfg(feature = "range_checked")]
+        if value < 0_u16 || 65535_u16 < value {
+            return Err(CanError::ParameterOutOfRange { message_id: 334 });
+        }
+        self.raw.view_bits_mut::<Lsb0>()[0..16].store_le(value);
+        Ok(())
+    }
+    
+    /// pwm_fanrad
+    ///
+    /// - Min: 0
+    /// - Max: 65535
+    /// - Unit: ""
+    /// - Receivers: Vector__XXX
+    #[inline(always)]
+    pub fn pwm_fanrad(&self) -> u16 {
+        self.pwm_fanrad_raw()
+    }
+    
+    /// Get raw value of pwm_fanrad
+    ///
+    /// - Start bit: 16
+    /// - Signal size: 16 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn pwm_fanrad_raw(&self) -> u16 {
+        let signal = self.raw.view_bits::<Lsb0>()[16..32].load_le::<u16>();
+        
+        signal
+    }
+    
+    /// Set value of pwm_fanrad
+    #[inline(always)]
+    pub fn set_pwm_fanrad(&mut self, value: u16) -> Result<(), CanError> {
+        #[cfg(feature = "range_checked")]
+        if value < 0_u16 || 65535_u16 < value {
+            return Err(CanError::ParameterOutOfRange { message_id: 334 });
+        }
+        self.raw.view_bits_mut::<Lsb0>()[16..32].store_le(value);
+        Ok(())
+    }
+    
+    /// pwm_pumpl
+    ///
+    /// - Min: 0
+    /// - Max: 65535
+    /// - Unit: ""
+    /// - Receivers: Vector__XXX
+    #[inline(always)]
+    pub fn pwm_pumpl(&self) -> u16 {
+        self.pwm_pumpl_raw()
+    }
+    
+    /// Get raw value of pwm_pumpl
+    ///
+    /// - Start bit: 32
+    /// - Signal size: 16 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn pwm_pumpl_raw(&self) -> u16 {
+        let signal = self.raw.view_bits::<Lsb0>()[32..48].load_le::<u16>();
+        
+        signal
+    }
+    
+    /// Set value of pwm_pumpl
+    #[inline(always)]
+    pub fn set_pwm_pumpl(&mut self, value: u16) -> Result<(), CanError> {
+        #[cfg(feature = "range_checked")]
+        if value < 0_u16 || 65535_u16 < value {
+            return Err(CanError::ParameterOutOfRange { message_id: 334 });
+        }
+        self.raw.view_bits_mut::<Lsb0>()[32..48].store_le(value);
+        Ok(())
+    }
+    
+    /// pwm_pumpr
+    ///
+    /// - Min: 0
+    /// - Max: 65535
+    /// - Unit: ""
+    /// - Receivers: Vector__XXX
+    #[inline(always)]
+    pub fn pwm_pumpr(&self) -> u16 {
+        self.pwm_pumpr_raw()
+    }
+    
+    /// Get raw value of pwm_pumpr
+    ///
+    /// - Start bit: 48
+    /// - Signal size: 16 bits
+    /// - Factor: 1
+    /// - Offset: 0
+    /// - Byte order: LittleEndian
+    /// - Value type: Unsigned
+    #[inline(always)]
+    pub fn pwm_pumpr_raw(&self) -> u16 {
+        let signal = self.raw.view_bits::<Lsb0>()[48..64].load_le::<u16>();
+        
+        signal
+    }
+    
+    /// Set value of pwm_pumpr
+    #[inline(always)]
+    pub fn set_pwm_pumpr(&mut self, value: u16) -> Result<(), CanError> {
+        #[cfg(feature = "range_checked")]
+        if value < 0_u16 || 65535_u16 < value {
+            return Err(CanError::ParameterOutOfRange { message_id: 334 });
+        }
+        self.raw.view_bits_mut::<Lsb0>()[48..64].store_le(value);
+        Ok(())
+    }
+    
+}
+
+impl core::convert::TryFrom<&[u8]> for CoolingControl {
+    type Error = CanError;
+    
+    #[inline(always)]
+    fn try_from(payload: &[u8]) -> Result<Self, Self::Error> {
+        if payload.len() < 8 { return Err(CanError::InvalidPayloadSize); }
+        let mut raw = [0u8; 8];
+        raw.copy_from_slice(&payload[..8]);
+        Ok(Self { raw })
+    }
+}
+
+#[cfg(feature = "debug")]
+impl core::fmt::Debug for CoolingControl {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if f.alternate() {
+            f.debug_struct("CoolingControl")
+                .field("pwm_fanbatt", &self.pwm_fanbatt())
+                .field("pwm_fanrad", &self.pwm_fanrad())
+                .field("pwm_pumpl", &self.pwm_pumpl())
+                .field("pwm_pumpr", &self.pwm_pumpr())
+            .finish()
+        } else {
+            f.debug_tuple("CoolingControl").field(&self.raw).finish()
+        }
+    }
+}
+
+#[cfg(feature = "arb")]
+impl<'a> Arbitrary<'a> for CoolingControl {
+    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self, arbitrary::Error> {
+        let pwm_fanbatt = u.int_in_range(0..=65535)?;
+        let pwm_fanrad = u.int_in_range(0..=65535)?;
+        let pwm_pumpl = u.int_in_range(0..=65535)?;
+        let pwm_pumpr = u.int_in_range(0..=65535)?;
+        CoolingControl::new(pwm_fanbatt,pwm_fanrad,pwm_pumpl,pwm_pumpr).map_err(|_| arbitrary::Error::IncorrectFormat)
     }
 }
 
