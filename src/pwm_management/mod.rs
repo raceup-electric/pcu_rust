@@ -1,12 +1,7 @@
-use core::{cmp::{max, min}, sync::atomic::{AtomicBool, Ordering}};
-
+use core::cmp::{min, max};
 use embassy_stm32::timer::simple_pwm::SimplePwmChannel;
 use embassy_time::Duration;
 use {defmt_rtt as _, panic_probe as _};
-
-static IS_POWER_INCREASING : AtomicBool = AtomicBool::new(false);
-static IS_POWER_DECREASING : AtomicBool = AtomicBool::new(false);
-
 
 pub struct PwmDualController<'a, T, const N: usize>
 where
@@ -62,62 +57,38 @@ where
 
     #[allow(dead_code)]
     pub async fn set_duty(&mut self, duty_cycle: u16) {
-        if duty_cycle < self.duty
-        {
+        if duty_cycle < self.duty {
             let mut ticker = embassy_time::Ticker::every(Duration::from_millis(200));
             loop {
-                if self.duty == duty_cycle
-                {
-                    self.duty = duty_cycle;
-                    IS_POWER_DECREASING.store(false, Ordering::SeqCst); //INFO: come su c++20
-                    return ;
-                }
-                else if self.duty < duty_cycle
-                {
+                if self.duty == duty_cycle {
+                    return;
+                } else if self.duty < duty_cycle {
                     self.set_duty_left(duty_cycle);
                     self.set_duty_right(duty_cycle);
                     self.duty = duty_cycle;
-                    IS_POWER_DECREASING.store(false, Ordering::SeqCst);
-                    return ;
+                    return;
                 }
                 ticker.next().await;
-                match IS_POWER_DECREASING.swap(true, Ordering::SeqCst) {
-                    true => {},
-                    false => {
-                        self.duty = max(duty_cycle, self.duty.saturating_sub(13107)); //20% al tick
-                        self.set_duty_left(self.duty);
-                        self.set_duty_right(self.duty);
-                    },
-                }
+                self.duty = max(duty_cycle, self.duty.saturating_sub(13107)); //20% al tick
+                self.set_duty_left(self.duty);
+                self.set_duty_right(self.duty);
             }
-        }
-        else
-        {
+        } else {
             let mut ticker = embassy_time::Ticker::every(Duration::from_millis(200));
             loop {
-                if self.duty == duty_cycle
-                {
+                if self.duty == duty_cycle {
                     self.duty = duty_cycle;
-                    IS_POWER_INCREASING.store(false, Ordering::SeqCst); //INFO: come su c++20
-                    return ;
-                }
-                else if self.duty > duty_cycle
-                {
+                    return;
+                } else if self.duty > duty_cycle {
                     self.set_duty_left(duty_cycle);
                     self.set_duty_right(duty_cycle);
                     self.duty = duty_cycle;
-                    IS_POWER_INCREASING.store(false, Ordering::SeqCst);
-                    return ;
+                    return;
                 }
                 ticker.next().await;
-                match IS_POWER_INCREASING.swap(true, Ordering::SeqCst) {
-                    true => {},
-                    false => {
-                        self.duty = min(duty_cycle, self.duty.saturating_add(13107)); //20% al tick
-                        self.set_duty_left(self.duty);
-                        self.set_duty_right(self.duty);
-                    },
-                }
+                self.duty = min(duty_cycle, self.duty.saturating_add(13107)); //20% al tick
+                self.set_duty_left(self.duty);
+                self.set_duty_right(self.duty);
             }
         }
     }

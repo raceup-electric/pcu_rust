@@ -1,7 +1,10 @@
 #![no_std]
 #![no_main]
 
-use core::{cmp::min, ops::Index};
+use core::{
+    cmp::{max, min},
+    ops::Index,
+};
 
 use embassy_executor::{Executor, Spawner};
 use embassy_futures::select::*;
@@ -207,42 +210,45 @@ async fn pwm(pins: Pwm) {
             Output::new(pins.enable_pumpl, Level::Low, Speed::Low),
             Output::new(pins.enable_pumpr, Level::Low, Speed::Low),
         );
-    
-    embassy_time::Timer::after_millis(8000).await;
-    
-    pwm_pump.duty = percent_to_duty(100);
-    pwm_pump.set_duty_left(pwm_pump.duty);
-    pwm_pump.set_duty_right(pwm_pump.duty);
-    pwm_fanrad.duty = percent_to_duty(100);
+
+    //INFO: ventole droni funzionanti
+    pwm_fanrad.set_level(0, false);
+    pwm_fanrad.duty = percent_to_duty(10);
+    pwm_fanrad.set_level(0, true);
     pwm_fanrad.set_duty_left(pwm_fanrad.duty);
     pwm_fanrad.set_duty_right(pwm_fanrad.duty);
-    
-    embassy_time::Timer::after_millis(1000).await;
-    
-    pwm_fanrad.set_level( 0, true);
-    pwm_fanbatt.set_level( 0, true);
+    embassy_time::Timer::after_millis(7_500).await;
+    pwm_fanrad.duty = percent_to_duty(5);
+    pwm_fanrad.set_duty_left(pwm_fanrad.duty);
+    pwm_fanrad.set_duty_right(pwm_fanrad.duty);
+    embassy_time::Timer::after_millis(7_500).await;
+    pwm_fanrad.set_duty(3770).await;
+
+    //INFO: pompe funzionanti
+    pwm_pump.set_level(0, false);
+    pwm_pump.duty = percent_to_duty(10);
     pwm_pump.set_level(0, true);
-
-    embassy_time::Timer::after_millis(1000).await;
-
-    pwm_pump.duty = percent_to_duty(50);
     pwm_pump.set_duty_left(pwm_pump.duty);
     pwm_pump.set_duty_right(pwm_pump.duty);
-    pwm_fanrad.duty = percent_to_duty(50);
-    pwm_fanrad.set_duty_left(pwm_fanrad.duty);
-    pwm_fanrad.set_duty_right(pwm_fanrad.duty);
+    embassy_time::Timer::after_millis(7_500).await;
+    pwm_pump.duty = percent_to_duty(5);
+    pwm_pump.set_duty_left(pwm_pump.duty);
+    pwm_pump.set_duty_right(pwm_pump.duty);
+    embassy_time::Timer::after_millis(7_500).await;
+    pwm_pump.set_duty_left(5900);
+    pwm_pump.set_duty_right(5570);
 
-    embassy_time::Timer::after_millis(1000).await;
-    
-    pwm_fanrad.set_duty(percent_to_duty(80)).await;
-    pwm_fanbatt.set_duty(percent_to_duty(100)).await;
-    pwm_pump.set_duty(percent_to_duty(80)).await;
 
-    embassy_time::Timer::after_millis(30000).await;
+    // INFO: ventole batteria funzionanti
+    pwm_fanbatt.set_level(0, true);
+    pwm_fanbatt.duty = percent_to_duty(100);
+    pwm_fanbatt.set_duty_left(percent_to_duty(100));
+    pwm_fanbatt.set_duty_right(percent_to_duty(100));
+    pwm_fanbatt.set_duty(percent_to_duty(80)).await; //logica inversa
 
-    pwm_fanrad.set_duty(percent_to_duty(50)).await;
-    pwm_fanbatt.set_duty(percent_to_duty(0)).await;
-    pwm_pump.set_duty(percent_to_duty(50)).await;
+    loop {
+        embassy_time::Timer::after_secs(1).await;
+    }
 }
 
 #[embassy_executor::task]
@@ -418,8 +424,7 @@ async fn task_senses(mut senses: Senses) {
 #[embassy_executor::task]
 async fn read_can(mut can: CanRx<'static>) {
     loop {
-        if let Ok(envelope) = can.try_read()
-        {
+        if let Ok(envelope) = can.try_read() {
             let frame = CanFrame::from_envelope(envelope);
             let message =
                 can_2::Messages::from_can_message(u32::from(frame.id()), frame._bytes().as_slice())
@@ -438,10 +443,10 @@ async fn read_can(mut can: CanRx<'static>) {
                     },
                     can_2::Messages::EbsBrakeReq(mes) => {
                         CAN_DRIVER_CHANNEL.signal(mes.req());
-                    },
+                    }
                     can_2::Messages::Driver(mes) => {
                         CAN_DRIVER_CHANNEL.signal(mes.brake() > 5);
-                    },
+                    }
                     can_2::Messages::CarMissionStatus(mes) => {
                         CAN_PWM_CHANNEL.signal(mes);
                     }
@@ -454,7 +459,7 @@ async fn read_can(mut can: CanRx<'static>) {
 }
 
 #[embassy_executor::task]
-async fn write_can(mut can:CanTx<'static>) {
+async fn write_can(mut can: CanTx<'static>) {
     loop {
         let (id, dlc, mes) = CAN_WRITER.receive().await;
         let message = CanFrame::new(id, &mes[..dlc]);
