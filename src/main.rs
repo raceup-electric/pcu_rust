@@ -38,7 +38,7 @@ static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
 
 static CAN_PWM_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CoolingControl> = Signal::new();
 static CAN_BMS_EMERGENCY_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
-static CAN_MISSIONSTATUS_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CarMissionStatus> =
+static CAN_MISSIONSTATUS_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CarStatus> =
     Signal::new();
 
 static CAN_RF_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM1> = Signal::new();
@@ -236,6 +236,13 @@ async fn pwm(pins: Pwm) {
             embassy_time::Timer::after_millis(10).await;
         }
     }
+
+    //NOTE:
+    //il pwm si setta da 0 a 2^16 (0-100%)
+    //ventole droni lavorano linearmente fra 5% e 10%
+    //pompe idem
+    //ventole batteria invece lavorano da 100% a 0% (spente a 100 e al massimo a 0)
+
     pwm_fanbatt.set_level(0, true);
     pwm_fanbatt.duty = percent_to_duty(100);
     pwm_fanbatt.set_duty_left(percent_to_duty(100));
@@ -267,13 +274,16 @@ async fn pwm(pins: Pwm) {
 
     embassy_time::Timer::after_millis(7_500).await;
 
+    let mut fan_on = false;
     //INFO: ready
 
-    pwm_pump.set_duty_left(5900);
-    pwm_pump.set_duty_right(5570);
-    pwm_fanrad.set_duty(3770).await;
-    pwm_fanbatt.set_duty(percent_to_duty(80)).await; //logica inversa
+    //INFO: uncomment those lines to get them working with lv
+    // pwm_pump.set_duty_left(5900);
+    // pwm_pump.set_duty_right(5570);
+    // pwm_fanrad.set_duty(3770).await;
+    // pwm_fanbatt.set_duty(percent_to_duty(80)).await; //logica inversa
     loop {
+        embassy_time::Timer::after_micros(50).await;
         if CAN_BMS_EMERGENCY_CHANNEL.signaled() {
             let fault_mes = can_2::PcuFault::new(true, true, true, true, true, true, true)
                 .ok()
@@ -289,13 +299,16 @@ async fn pwm(pins: Pwm) {
                 embassy_time::Timer::after_millis(10).await;
             }
         } else if CAN_MISSIONSTATUS_CHANNEL.signaled() {
-            if CAN_MISSIONSTATUS_CHANNEL.wait().await.mission_status()
-                == can_2::CarMissionStatusMissionStatus::MissionRunning
+            if CAN_MISSIONSTATUS_CHANNEL.wait().await.running_status()
+                == can_2::CarStatusRunningStatus::Running
             {
-                pwm_fanrad.set_duty(5243).await;
-                pwm_fanbatt.set_duty(5900).await;
-                pwm_pump.set_duty_left(5900);
-                pwm_pump.set_duty_right(5570);
+                if !fan_on {
+                    pwm_fanrad.set_duty(6226).await;
+                    pwm_fanbatt.set_duty(percent_to_duty(40)).await;
+                    pwm_pump.set_duty_left(5900);
+                    pwm_pump.set_duty_right(5570);
+                    fan_on = true;
+                }
             }
         } else if CAN_PWM_CHANNEL.signaled() {
             let mes = CAN_PWM_CHANNEL.wait().await;
@@ -504,7 +517,7 @@ async fn read_can(mut can: CanRx<'static>) {
                     can_2::Messages::Driver(mes) => {
                         CAN_DRIVER_CHANNEL.signal(mes.brake() > 5);
                     }
-                    can_2::Messages::CarMissionStatus(mes) => {
+                    can_2::Messages::CarStatus(mes) => {
                         CAN_MISSIONSTATUS_CHANNEL.signal(mes);
                     }
                     can_2::Messages::BmsLvEmergency(_) => {
