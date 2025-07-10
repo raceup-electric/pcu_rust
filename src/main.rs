@@ -426,8 +426,8 @@ async fn fault_detection(faults: Faults) {
             faults[FaultEnum::V24].is_high(),
             faults[FaultEnum::Pumpl].is_high(),
             faults[FaultEnum::Pumpr].is_high(),
-            faults[FaultEnum::Fanbattl].is_high(),
             faults[FaultEnum::Fanbattr].is_high(),
+            faults[FaultEnum::Fanbattl].is_high(),
         );
         if let Ok(mes) = message {
             CAN_WRITER
@@ -476,7 +476,7 @@ async fn task_senses(mut senses: Senses) {
         let _ = msg_2.set_adc_fanradl(val_fanradl);
         let _ = msg_2.set_adc_fanradr(val_fanradr);
         let _ = msg_2.set_adc_fanbattl(val_fanbattl);
-        let _ = msg_2.set_adc_fanradr(val_fanbattr);
+        let _ = msg_2.set_adc_fanbattr(val_fanbattr);
         let _ = msg_3.set_adc_dv(val_dv);
         let _ = msg_3.set_adc_emb(val_emb);
         let _ = msg_3.set_adc_steeract(val_steeract);
