@@ -38,8 +38,7 @@ static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
 
 static CAN_PWM_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CoolingControl> = Signal::new();
 static CAN_BMS_EMERGENCY_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
-static CAN_MISSIONSTATUS_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CarStatus> =
-    Signal::new();
+static CAN_MISSIONSTATUS_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CarStatus> = Signal::new();
 
 static CAN_RF_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM1> = Signal::new();
 static CAN_ENABLES_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM2> = Signal::new();
@@ -221,7 +220,7 @@ async fn pwm(pins: Pwm) {
             Output::new(pins.enable_pumpr, Level::Low, Speed::Low),
         );
 
-    if CAN_BMS_EMERGENCY_CHANNEL.signaled() {
+    if false && CAN_BMS_EMERGENCY_CHANNEL.signaled() { //HACK:
         let fault_mes = can_2::PcuFault::new(true, true, true, true, true, true, true)
             .ok()
             .unwrap();
@@ -277,6 +276,13 @@ async fn pwm(pins: Pwm) {
     let mut fan_on = false;
     //INFO: ready
 
+    let mut prev_state = can_2::CarStatusRunningStatus::SystemOff;
+    let mut curr_state = can_2::CarStatusRunningStatus::SystemOff;
+    let mut def_pumpl: u16 = 5750;
+    let mut def_pumpr: u16 = 5750;
+    let mut def_batt: u16 = percent_to_duty(40);
+    let mut def_droni: u16 = 6226;
+
     //INFO: uncomment those lines to get them working with lv
     // pwm_pump.set_duty_left(5900);
     // pwm_pump.set_duty_right(5570);
@@ -284,7 +290,7 @@ async fn pwm(pins: Pwm) {
     // pwm_fanbatt.set_duty(percent_to_duty(80)).await; //logica inversa
     loop {
         embassy_time::Timer::after_micros(50).await;
-        if CAN_BMS_EMERGENCY_CHANNEL.signaled() {
+        if false && CAN_BMS_EMERGENCY_CHANNEL.signaled() {
             let fault_mes = can_2::PcuFault::new(true, true, true, true, true, true, true)
                 .ok()
                 .unwrap();
@@ -299,24 +305,34 @@ async fn pwm(pins: Pwm) {
                 embassy_time::Timer::after_millis(10).await;
             }
         } else if CAN_MISSIONSTATUS_CHANNEL.signaled() {
-            if CAN_MISSIONSTATUS_CHANNEL.wait().await.running_status()
-                == can_2::CarStatusRunningStatus::Running
-            {
-                if !fan_on {
-                    pwm_fanrad.set_duty(6226).await;
-                    pwm_fanbatt.set_duty(percent_to_duty(40)).await;
-                    pwm_pump.set_duty_left(5900);
-                    pwm_pump.set_duty_right(5570);
-                    fan_on = true;
+            curr_state = CAN_MISSIONSTATUS_CHANNEL.wait().await.running_status();
+            if curr_state != prev_state {
+                match curr_state {
+                    can_2::CarStatusRunningStatus::Running => {
+                        pwm_fanrad.set_duty(def_droni).await;
+                        pwm_fanbatt.set_duty(def_batt).await;
+                        pwm_pump.set_duty_left(def_pumpl);
+                        pwm_pump.set_duty_right(def_pumpr);
+                    }
+                    _ => {
+                        pwm_fanrad.set_duty(percent_to_duty(5)).await;
+                        pwm_fanbatt.set_duty(percent_to_duty(100)).await;
+                        pwm_pump.set_duty_left(percent_to_duty(5));
+                        pwm_pump.set_duty_right(percent_to_duty(5));
+                    }
                 }
             }
+            prev_state = curr_state;
         } else if CAN_PWM_CHANNEL.signaled() {
             let mes = CAN_PWM_CHANNEL.wait().await;
             pwm_fanrad.set_duty(mes.pwm_fanrad()).await;
             pwm_fanbatt.set_duty(mes.pwm_fanbatt()).await;
-
             pwm_pump.set_duty_left(mes.pwm_pumpl());
             pwm_pump.set_duty_right(mes.pwm_pumpr());
+            def_batt = mes.pwm_fanbatt();
+            def_pumpr = mes.pwm_pumpr();
+            def_pumpl = mes.pwm_pumpl();
+            def_droni = mes.pwm_fanrad();
         }
     }
 }
