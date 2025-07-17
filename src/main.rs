@@ -87,7 +87,7 @@ async fn main(_spawner: Spawner) {
                 can_2::Pcu::MESSAGE_ID as u16
             ))),
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
-                can_2::CarMissionStatus::MESSAGE_ID as u16
+                can_2::CarStatus::MESSAGE_ID as u16
             ))),
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
@@ -250,16 +250,17 @@ async fn pwm(pins: Pwm) {
     //INFO: calib max
     pwm_fanrad.set_level(0, false);
     pwm_fanrad.duty = percent_to_duty(10);
-    pwm_fanrad.set_level(0, true);
     pwm_fanrad.set_duty_left(pwm_fanrad.duty);
     pwm_fanrad.set_duty_right(pwm_fanrad.duty);
-
+    embassy_time::Timer::after_millis(1000).await;
+    pwm_fanrad.set_level(0, true);
+    
     pwm_pump.set_level(0, false);
     pwm_pump.duty = percent_to_duty(10);
-    pwm_pump.set_level(0, true);
     pwm_pump.set_duty_left(pwm_pump.duty);
     pwm_pump.set_duty_right(pwm_pump.duty);
-
+    embassy_time::Timer::after_millis(1000).await;
+    pwm_pump.set_level(0, true);
     embassy_time::Timer::after_millis(7_500).await;
 
     //INFO: calib min
