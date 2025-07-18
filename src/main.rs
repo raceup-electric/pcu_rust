@@ -146,6 +146,10 @@ fn percent_to_duty(val: u8) -> u16 {
     (val as u32 * 65_535 / 100) as u16
 }
 
+fn delta_pwm(curr: u16, desidered: u16) -> u16 {
+    curr.abs_diff(desidered) / 10
+}
+
 #[embassy_executor::task]
 async fn pwm(pins: Pwm) {
     let fanradl = PwmPin::new_ch4(pins.pwm_fanradl, OutputType::PushPull);
@@ -220,7 +224,7 @@ async fn pwm(pins: Pwm) {
             Output::new(pins.enable_pumpr, Level::Low, Speed::Low),
         );
 
-    if false && CAN_BMS_EMERGENCY_CHANNEL.signaled() { //HACK:
+    if false && CAN_BMS_EMERGENCY_CHANNEL.signaled() {
         let fault_mes = can_2::PcuFault::new(true, true, true, true, true, true, true)
             .ok()
             .unwrap();
@@ -243,46 +247,35 @@ async fn pwm(pins: Pwm) {
     //ventole batteria invece lavorano da 100% a 0% (spente a 100 e al massimo a 0)
 
     pwm_fanbatt.set_level(0, true);
-    pwm_fanbatt.duty = percent_to_duty(100);
-    pwm_fanbatt.set_duty_left(percent_to_duty(100));
-    pwm_fanbatt.set_duty_right(percent_to_duty(100));
+    pwm_fanbatt.set_duty(percent_to_duty(100));
 
     //INFO: calib max
     pwm_fanrad.set_level(0, false);
-    pwm_fanrad.duty = percent_to_duty(10);
-    pwm_fanrad.set_duty_left(pwm_fanrad.duty);
-    pwm_fanrad.set_duty_right(pwm_fanrad.duty);
-    embassy_time::Timer::after_millis(1000).await;
+    pwm_fanrad.set_duty(percent_to_duty(10));
+    embassy_time::Timer::after_millis(100).await;
     pwm_fanrad.set_level(0, true);
-    
+
     pwm_pump.set_level(0, false);
-    pwm_pump.duty = percent_to_duty(10);
-    pwm_pump.set_duty_left(pwm_pump.duty);
-    pwm_pump.set_duty_right(pwm_pump.duty);
-    embassy_time::Timer::after_millis(1000).await;
+    pwm_pump.set_duty(percent_to_duty(10));
+    embassy_time::Timer::after_millis(100).await;
     pwm_pump.set_level(0, true);
+
     embassy_time::Timer::after_millis(7_500).await;
 
     //INFO: calib min
-    pwm_fanrad.duty = percent_to_duty(5);
-    pwm_fanrad.set_duty_left(pwm_fanrad.duty);
-    pwm_fanrad.set_duty_right(pwm_fanrad.duty);
-
-    pwm_pump.duty = percent_to_duty(5);
-    pwm_pump.set_duty_left(pwm_pump.duty);
-    pwm_pump.set_duty_right(pwm_pump.duty);
+    pwm_fanrad.set_duty(percent_to_duty(5));
+    pwm_pump.set_duty(percent_to_duty(5));
 
     embassy_time::Timer::after_millis(7_500).await;
 
-    let mut fan_on = false;
     //INFO: ready
 
     let mut prev_state = can_2::CarStatusRunningStatus::SystemOff;
-    let mut curr_state = can_2::CarStatusRunningStatus::SystemOff;
-    let mut def_pumpl: u16 = 5750;
-    let mut def_pumpr: u16 = 5750;
+    let mut curr_state;
+    let mut def_pumpl: u16 = 5734;
+    let mut def_pumpr: u16 = 5734;
     let mut def_batt: u16 = percent_to_duty(40);
-    let mut def_droni: u16 = 6226;
+    let mut def_droni: u16 = 6550;
 
     //INFO: uncomment those lines to get them working with lv
     // pwm_pump.set_duty_left(5900);
@@ -310,14 +303,41 @@ async fn pwm(pins: Pwm) {
             if curr_state != prev_state {
                 match curr_state {
                     can_2::CarStatusRunningStatus::Running => {
-                        pwm_fanrad.set_duty(def_droni).await;
-                        pwm_fanbatt.set_duty(def_batt).await;
+                        let mut i : u16 = 0;
+                        let delta_droni = delta_pwm(def_droni, percent_to_duty(5));
+                        let delta_batteria = delta_pwm(def_batt, percent_to_duty(100));
+                        let delta_pumpl = delta_pwm(def_pumpl, percent_to_duty(5));
+                        let delta_pumpr = delta_pwm(def_pumpr, percent_to_duty(5));
+                        while i <= 10 {
+                            embassy_time::Timer::after_millis(1_000).await;
+                            pwm_fanrad.set_duty(percent_to_duty(5) + delta_droni * i);
+                            pwm_pump.set_duty_left(percent_to_duty(5) + delta_pumpl * i);
+                            pwm_pump.set_duty_right(percent_to_duty(5) + delta_pumpr * i);
+                            pwm_fanbatt.set_duty(percent_to_duty(100) - delta_batteria * i);
+                            i = i + 1;
+                        }
+                        pwm_fanrad.set_duty(def_droni);
+                        pwm_fanbatt.set_duty(def_batt);
                         pwm_pump.set_duty_left(def_pumpl);
                         pwm_pump.set_duty_right(def_pumpr);
                     }
                     _ => {
-                        pwm_fanrad.set_duty(percent_to_duty(5)).await;
-                        pwm_fanbatt.set_duty(percent_to_duty(100)).await;
+                        embassy_time::Timer::after_secs(9).await;
+                        let mut i : u16 = 10;
+                        let delta_droni = delta_pwm(pwm_fanrad.duty_left(), percent_to_duty(5));
+                        let delta_batteria = delta_pwm(pwm_fanbatt.duty_left(), percent_to_duty(100));
+                        let delta_pumpl = delta_pwm(pwm_pump.duty_left(), percent_to_duty(5));
+                        let delta_pumpr = delta_pwm(pwm_pump.duty_right(), percent_to_duty(5));
+                        while i>0 {
+                            embassy_time::Timer::after_millis(1000).await;
+                            pwm_fanrad.set_duty(percent_to_duty(5) + delta_droni * i);
+                            pwm_pump.set_duty_left(percent_to_duty(5) + delta_pumpl * i);
+                            pwm_pump.set_duty_right(percent_to_duty(5) + delta_pumpr * i);
+                            pwm_fanbatt.set_duty(percent_to_duty(100) - delta_batteria * i);
+                            i = i - 1;
+                        }
+                        pwm_fanrad.set_duty(percent_to_duty(5));
+                        pwm_fanbatt.set_duty(percent_to_duty(100));
                         pwm_pump.set_duty_left(percent_to_duty(5));
                         pwm_pump.set_duty_right(percent_to_duty(5));
                     }
@@ -326,8 +346,8 @@ async fn pwm(pins: Pwm) {
             prev_state = curr_state;
         } else if CAN_PWM_CHANNEL.signaled() {
             let mes = CAN_PWM_CHANNEL.wait().await;
-            pwm_fanrad.set_duty(mes.pwm_fanrad()).await;
-            pwm_fanbatt.set_duty(mes.pwm_fanbatt()).await;
+            pwm_fanrad.set_duty(mes.pwm_fanrad());
+            pwm_fanbatt.set_duty(mes.pwm_fanbatt());
             pwm_pump.set_duty_left(mes.pwm_pumpl());
             pwm_pump.set_duty_right(mes.pwm_pumpr());
             def_batt = mes.pwm_fanbatt();

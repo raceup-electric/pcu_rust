@@ -1,6 +1,4 @@
-use core::cmp::{min, max};
 use embassy_stm32::timer::simple_pwm::SimplePwmChannel;
-use embassy_time::Duration;
 use {defmt_rtt as _, panic_probe as _};
 
 pub struct PwmDualController<'a, T, const N: usize>
@@ -9,7 +7,8 @@ where
 {
     left: SimplePwmChannel<'a, T>,
     right: SimplePwmChannel<'a, T>,
-    pub duty: u16,
+    duty_left: u16,
+    duty_right: u16,
     enablement: [bool; N],
     enable_check: &'a dyn Fn(&[bool; N]) -> bool,
     enabled: bool,
@@ -34,7 +33,8 @@ where
         Self {
             left,
             right,
-            duty: 0,
+            duty_left: 0,
+            duty_right: 0,
             enablement,
             enable_check,
             enabled,
@@ -46,51 +46,20 @@ where
     pub fn set_duty_right(&mut self, duty_cycle: u16) {
         self.right
             .set_duty_cycle_fraction(duty_cycle, 0_u16.wrapping_sub(1));
+        self.duty_right = duty_cycle;
         self.update_debug_pin();
     }
 
     pub fn set_duty_left(&mut self, duty_cycle: u16) {
         self.left
             .set_duty_cycle_fraction(duty_cycle, 0_u16.wrapping_sub(1));
+        self.duty_left = duty_cycle;
         self.update_debug_pin()
     }
 
-    #[allow(dead_code)]
-    pub async fn set_duty(&mut self, duty_cycle: u16) {
-        if duty_cycle < self.duty {
-            let mut ticker = embassy_time::Ticker::every(Duration::from_millis(200));
-            loop {
-                if self.duty == duty_cycle {
-                    return;
-                } else if self.duty < duty_cycle {
-                    self.set_duty_left(duty_cycle);
-                    self.set_duty_right(duty_cycle);
-                    self.duty = duty_cycle;
-                    return;
-                }
-                ticker.next().await;
-                self.duty = max(duty_cycle, self.duty.saturating_sub(13107)); //20% al tick
-                self.set_duty_left(self.duty);
-                self.set_duty_right(self.duty);
-            }
-        } else {
-            let mut ticker = embassy_time::Ticker::every(Duration::from_millis(200));
-            loop {
-                if self.duty == duty_cycle {
-                    self.duty = duty_cycle;
-                    return;
-                } else if self.duty > duty_cycle {
-                    self.set_duty_left(duty_cycle);
-                    self.set_duty_right(duty_cycle);
-                    self.duty = duty_cycle;
-                    return;
-                }
-                ticker.next().await;
-                self.duty = min(duty_cycle, self.duty.saturating_add(13107)); //20% al tick
-                self.set_duty_left(self.duty);
-                self.set_duty_right(self.duty);
-            }
-        }
+    pub fn set_duty(&mut self, duty_cycle: u16) {
+        self.set_duty_left(duty_cycle);
+        self.set_duty_right(duty_cycle);
     }
 
     #[allow(dead_code)]
@@ -128,13 +97,21 @@ where
     }
 
     fn update_debug_pin(&mut self) {
-        match self.enabled && self.duty != 0 {
+        match self.enabled && self.duty_left != 0 {
             true => self.debug_pin_left.set_high(),
             false => self.debug_pin_left.set_low(),
         }
-        match self.enabled && self.duty != 0 {
+        match self.enabled && self.duty_right != 0 {
             true => self.debug_pin_right.set_high(),
             false => self.debug_pin_right.set_low(),
         }
+    }
+
+    pub fn duty_left(&self) -> u16 {
+        self.duty_left
+    }
+
+    pub fn duty_right(&self) -> u16 {
+        self.duty_right
     }
 }
