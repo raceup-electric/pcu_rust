@@ -17,8 +17,9 @@ use embassy_stm32::{
 };
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex, signal::Signal,
+    watch::Watch,
 };
-use embassy_time::{Duration, Ticker};
+use embassy_time::{Duration, Instant, Ticker};
 
 use defmt::*;
 use embedded_hal::blocking::can;
@@ -28,13 +29,13 @@ mod can_management;
 mod pins;
 mod pwm_management;
 use crate::can_management::{
-    messages::{self as can_2, BmsLvEmergency},
+    messages::{self as can_2, CarStatusRunningStatus},
     CanController, CanFrame,
 };
 use crate::pins::*;
 use crate::pwm_management::PwmDualController;
 
-static EXECUTOR_LOW: StaticCell<Executor> = StaticCell::new();
+static TASK_SPAWNER: StaticCell<Spawner> = StaticCell::new();
 
 static CAN_PWM_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CoolingControl> = Signal::new();
 static CAN_BMS_EMERGENCY_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
@@ -46,8 +47,17 @@ static CAN_DRIVER_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new()
 
 static CAN_WRITER: Channel<CriticalSectionRawMutex, (u16, usize, [u8; 8]), 20> = Channel::new();
 
+static SGN_COOLING: Watch<CriticalSectionRawMutex, SgnCooling, 3> = Watch::new();
+
+#[derive(Clone)]
+struct SgnCooling {
+    state_change: Option<(can_2::CarStatusRunningStatus, can_2::CarStatusRunningStatus)>,
+    default_overrides: Option<can_2::CoolingControl>,
+    bms_panic: Option<bool>,
+}
+
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(Default::default());
     let r = split_resources!(p);
 
@@ -95,17 +105,18 @@ async fn main(_spawner: Spawner) {
     );
     let (mut _can_tx, mut _can_rx) = can.can.split();
 
-    let executor = EXECUTOR_LOW.init(Executor::new());
-    executor.run(|spawner| {
-        unwrap!(spawner.spawn(task_senses(r.senses)));
-        unwrap!(spawner.spawn(task_enables(r.enables)));
-        unwrap!(spawner.spawn(pwm(r.pwm)));
-        unwrap!(spawner.spawn(read_can(_can_rx)));
-        unwrap!(spawner.spawn(write_can(_can_tx)));
-        unwrap!(spawner.spawn(fault_detection(r.faults)));
-        unwrap!(spawner.spawn(task_brake(r.brake)));
-        unwrap!(spawner.spawn(task_asms(r.asms)));
-    });
+    spawner.spawn(read_can(_can_rx)).unwrap();
+    spawner.spawn(write_can(_can_tx)).unwrap();
+    spawner.spawn(task_enables(r.enables)).unwrap();
+    spawner.spawn(task_senses(r.senses)).unwrap();
+    spawner.spawn(task_brake(r.brake)).unwrap();
+    spawner.spawn(task_asms(r.asms)).unwrap();
+    spawner.spawn(fault_detection(r.faults)).unwrap();
+    spawner.spawn(pwm(r.pwm, spawner)).unwrap();
+
+    loop {
+        embassy_time::Timer::after_secs(10).await;
+    }
 }
 
 #[embassy_executor::task]
@@ -146,12 +157,8 @@ fn percent_to_duty(val: u8) -> u16 {
     (val as u32 * 65_535 / 100) as u16
 }
 
-fn delta_pwm(curr: u16, desidered: u16) -> u16 {
-    curr.abs_diff(desidered) / 10
-}
-
 #[embassy_executor::task]
-async fn pwm(pins: Pwm) {
+async fn pwm(pins: Pwm, spawner: Spawner) {
     let fanradl = PwmPin::new_ch4(pins.pwm_fanradl, OutputType::PushPull);
     let fanradr = PwmPin::new_ch3(pins.pwm_fanradr, OutputType::PushPull);
     let fanrad_pwm_driver = SimplePwm::new(
@@ -224,143 +231,216 @@ async fn pwm(pins: Pwm) {
             Output::new(pins.enable_pumpr, Level::Low, Speed::Low),
         );
 
-    if false && CAN_BMS_EMERGENCY_CHANNEL.signaled() {
-        let fault_mes = can_2::PcuFault::new(true, true, true, true, true, true, true)
-            .ok()
-            .unwrap();
-        loop {
-            CAN_WRITER
-                .send((
-                    can_2::PcuFault::MESSAGE_ID as u16,
-                    can_2::PcuFault::DLC as usize,
-                    pad_array::<1, 8>(fault_mes.raw(), 0),
-                ))
-                .await;
-            embassy_time::Timer::after_millis(10).await;
-        }
-    }
+    spawner.spawn(fanrad_control(pwm_fanrad)).unwrap();
+    spawner.spawn(pump_control(pwm_pump)).unwrap();
+    spawner.spawn(fanbatt_control(pwm_fanbatt)).unwrap();
 
-    //NOTE:
-    //il pwm si setta da 0 a 2^16 (0-100%)
-    //ventole droni lavorano linearmente fra 5% e 10%
-    //pompe idem
-    //ventole batteria invece lavorano da 100% a 0% (spente a 100 e al massimo a 0)
+    let sender = SGN_COOLING.sender();
 
-    pwm_fanbatt.set_level(0, true);
-    pwm_fanbatt.set_duty(percent_to_duty(100));
-
-    //INFO: calib max
-    pwm_fanrad.set_level(0, false);
-    pwm_fanrad.set_duty(percent_to_duty(10));
-    embassy_time::Timer::after_millis(500).await;
-    pwm_fanrad.set_level(0, true);
-
-    pwm_pump.set_level(0, false);
-    pwm_pump.set_duty(percent_to_duty(10));
-    embassy_time::Timer::after_millis(100).await;
-    pwm_pump.set_level(0, true);
-    embassy_time::Timer::after_millis(100).await;
-    pwm_pump.set_level(0, false);
-    embassy_time::Timer::after_millis(10).await;
-    pwm_pump.set_level(0, true);
-
-    embassy_time::Timer::after_millis(7_500).await;
-
-    //INFO: calib min
-    pwm_fanrad.set_duty(percent_to_duty(5));
-    pwm_pump.set_duty(percent_to_duty(5));
-
-    embassy_time::Timer::after_millis(7_500).await;
-
-    //INFO: ready
-
-    let mut prev_state = can_2::CarStatusRunningStatus::SystemOff;
-    let mut curr_state;
-    let mut def_pumpl: u16 = 5734;
-    let mut def_pumpr: u16 = 5734;
-    let mut def_batt: u16 = percent_to_duty(40);
-    let mut def_droni: u16 = 6550;
-
-    //INFO: uncomment those lines to get them working with lv
-    // pwm_pump.set_duty_left(5900);
-    // pwm_pump.set_duty_right(5570);
-    // pwm_fanrad.set_duty(3770).await;
-    // pwm_fanbatt.set_duty(percent_to_duty(80)).await; //logica inversa
+    let mut prev_state = CarStatusRunningStatus::SystemOff;
     loop {
-        embassy_time::Timer::after_micros(50).await;
-        if false && CAN_BMS_EMERGENCY_CHANNEL.signaled() {
-            let fault_mes = can_2::PcuFault::new(true, true, true, true, true, true, true)
-                .ok()
-                .unwrap();
-            loop {
-                CAN_WRITER
-                    .send((
-                        can_2::PcuFault::MESSAGE_ID as u16,
-                        can_2::PcuFault::DLC as usize,
-                        pad_array::<1, 8>(fault_mes.raw(), 0),
-                    ))
-                    .await;
-                embassy_time::Timer::after_millis(10).await;
-            }
-        } else if CAN_MISSIONSTATUS_CHANNEL.signaled() {
-            curr_state = CAN_MISSIONSTATUS_CHANNEL.wait().await.running_status();
-            if curr_state != prev_state {
-                match curr_state {
-                    can_2::CarStatusRunningStatus::Running => {
-                        let mut i: u16 = 0;
-                        let delta_droni = delta_pwm(def_droni, percent_to_duty(5));
-                        let delta_batteria = delta_pwm(def_batt, percent_to_duty(100));
-                        let delta_pumpl = delta_pwm(def_pumpl, percent_to_duty(5));
-                        let delta_pumpr = delta_pwm(def_pumpr, percent_to_duty(5));
-                        while i <= 10 {
-                            embassy_time::Timer::after_millis(1_000).await;
-                            pwm_fanrad.set_duty(percent_to_duty(5) + delta_droni * i);
-                            pwm_pump.set_duty_left(percent_to_duty(5) + delta_pumpl * i);
-                            pwm_pump.set_duty_right(percent_to_duty(5) + delta_pumpr * i);
-                            pwm_fanbatt.set_duty(percent_to_duty(100) - delta_batteria * i);
-                            i = i + 1;
-                        }
-                        pwm_fanrad.set_duty(def_droni);
-                        pwm_fanbatt.set_duty(def_batt);
-                        pwm_pump.set_duty_left(def_pumpl);
-                        pwm_pump.set_duty_right(def_pumpr);
-                    }
-                    _ => {
-                        if prev_state == can_2::CarStatusRunningStatus::Running {
-                            embassy_time::Timer::after_secs(9).await;
-                            let mut i: u16 = 10;
-                            let delta_droni = delta_pwm(pwm_fanrad.duty_left(), percent_to_duty(5));
-                            let delta_batteria =
-                                delta_pwm(pwm_fanbatt.duty_left(), percent_to_duty(100));
-                            let delta_pumpl = delta_pwm(pwm_pump.duty_left(), percent_to_duty(5));
-                            let delta_pumpr = delta_pwm(pwm_pump.duty_right(), percent_to_duty(5));
-                            while i > 0 {
-                                embassy_time::Timer::after_millis(1_000).await;
-                                pwm_fanrad.set_duty(percent_to_duty(5) + delta_droni * i);
-                                pwm_pump.set_duty_left(percent_to_duty(5) + delta_pumpl * i);
-                                pwm_pump.set_duty_right(percent_to_duty(5) + delta_pumpr * i);
-                                pwm_fanbatt.set_duty(percent_to_duty(100) - delta_batteria * i);
-                                i = i - 1;
-                            }
-                            pwm_fanrad.set_duty(percent_to_duty(5));
-                            pwm_fanbatt.set_duty(percent_to_duty(100));
-                            pwm_pump.set_duty_left(percent_to_duty(5));
-                            pwm_pump.set_duty_right(percent_to_duty(5));
-                        }
-                    }
+
+        match select3(
+            CAN_MISSIONSTATUS_CHANNEL.wait(),
+            CAN_PWM_CHANNEL.wait(),
+            CAN_BMS_EMERGENCY_CHANNEL.wait(),
+        )
+        .await
+        {
+            Either3::First(mes) => {
+                if mes.running_status() != prev_state {
+                    sender.send(SgnCooling {
+                        state_change: Some((prev_state, mes.running_status())),
+                        default_overrides: None,
+                        bms_panic: None,
+                    });
+                    prev_state = mes.running_status();
                 }
             }
-            prev_state = curr_state;
-        } else if CAN_PWM_CHANNEL.signaled() {
-            let mes = CAN_PWM_CHANNEL.wait().await;
-            pwm_fanrad.set_duty(mes.pwm_fanrad());
-            pwm_fanbatt.set_duty(mes.pwm_fanbatt());
-            pwm_pump.set_duty_left(mes.pwm_pumpl());
-            pwm_pump.set_duty_right(mes.pwm_pumpr());
-            def_batt = mes.pwm_fanbatt();
-            def_pumpr = mes.pwm_pumpr();
-            def_pumpl = mes.pwm_pumpl();
-            def_droni = mes.pwm_fanrad();
+            Either3::Second(mes) => {
+                sender.send(SgnCooling {
+                    state_change: None,
+                    default_overrides: Some(mes),
+                    bms_panic: None,
+                });
+            }
+            Either3::Third(_) => {
+                sender.send(SgnCooling {
+                    state_change: None,
+                    default_overrides: None,
+                    bms_panic: Some(true),
+                });
+            }
+        }
+        embassy_time::Timer::after_micros(50).await;
+    }
+}
+
+#[embassy_executor::task]
+async fn fanrad_control(mut pwm: PwmDualController<'static, embassy_stm32::peripherals::TIM2, 1>) {
+    let mut def_pwm: u16 = 6550;
+    let mut receiver = SGN_COOLING.receiver().unwrap();
+
+    pwm.set_level(0, false);
+    pwm.set_duty(percent_to_duty(10));
+    embassy_time::Timer::after_millis(500).await;
+    pwm.set_level(0, true);
+
+    embassy_time::Timer::after_millis(7_500).await;
+
+    pwm.set_duty(percent_to_duty(5));
+
+    embassy_time::Timer::after_millis(7_500).await;
+
+    let mut i = 0;
+    let states: [f32; 4] = [0.0_f32, 0.33_f32, 0.66_f32, 1.0_f32];
+    loop {
+        let received = receiver.changed().await;
+        if received.bms_panic.is_some() {
+            pwm.set_duty(0);
+            loop {
+                embassy_time::Timer::after_secs(1).await;
+            }
+        }
+        if received.default_overrides.is_some() {
+            def_pwm = received.default_overrides.unwrap().pwm_fanrad();
+            pwm.set_duty(def_pwm);
+            i = states.len() - 1;
+        }
+        if received.state_change.is_some() {
+            let mut tck = embassy_time::Ticker::every(Duration::from_millis(500));
+            let delta: f32 = percent_to_duty(5).abs_diff(def_pwm) as f32;
+            let (prev_state, curr_state) = received.state_change.unwrap();
+            if curr_state == can_2::CarStatusRunningStatus::Running {
+                for j in i..states.len() {
+                    tck.next().await;
+                    if receiver.contains_value() {
+                        // break; HACK:
+                    }
+                    i = j;
+                    pwm.set_duty(percent_to_duty(5) + ((states[i] * delta) as u16));
+                }
+            } else if prev_state == can_2::CarStatusRunningStatus::Running {
+                for _ in 0..10 {
+                    tck.next().await;
+                    if receiver.contains_value() {
+                        // break; HACK:
+                    }
+                }
+                for j in i..=0 {
+                    tck.next().await;
+                    if receiver.contains_value() {
+                        // break;
+                    }
+                    i = j;
+                    pwm.set_duty(percent_to_duty(5) + ((states[i] * delta) as u16));
+                }
+            }
+        }
+    }
+}
+
+#[embassy_executor::task]
+async fn fanbatt_control(mut pwm: PwmDualController<'static, embassy_stm32::peripherals::TIM3, 1>) {
+    let mut def_pwm: u16 = percent_to_duty(40);
+    let mut receiver = SGN_COOLING.receiver().unwrap();
+
+    loop {
+        let received = receiver.changed().await;
+        if received.bms_panic.is_some() {
+            pwm.set_duty(100);
+            loop {
+                embassy_time::Timer::after_secs(1).await;
+            }
+        }
+        if received.default_overrides.is_some() {
+            def_pwm = received.default_overrides.unwrap().pwm_fanbatt();
+            pwm.set_duty(def_pwm);
+        }
+        if received.state_change.is_some() {
+            let (prev_state, curr_state) = received.state_change.unwrap();
+            if curr_state == can_2::CarStatusRunningStatus::Running {
+                pwm.set_duty(def_pwm);
+            } else if prev_state == can_2::CarStatusRunningStatus::Running {
+                pwm.set_duty(percent_to_duty(100));
+            }
+        }
+    }
+}
+
+#[embassy_executor::task]
+async fn pump_control(mut pwm: PwmDualController<'static, embassy_stm32::peripherals::TIM4, 1>) {
+    let mut def_left_pwm: u16 = 5734;
+    let mut def_right_pwm: u16 = 5734;
+    let mut receiver = SGN_COOLING.receiver().unwrap();
+
+    pwm.set_level(0, false);
+    pwm.set_duty(percent_to_duty(10));
+    embassy_time::Timer::after_millis(100).await;
+    pwm.set_level(0, true);
+    embassy_time::Timer::after_millis(100).await;
+    pwm.set_level(0, false);
+    embassy_time::Timer::after_millis(10).await;
+    pwm.set_level(0, true);
+
+    embassy_time::Timer::after_millis(7_500).await;
+
+    pwm.set_duty(percent_to_duty(5));
+
+    embassy_time::Timer::after_millis(7_500).await;
+
+    let mut i = 0;
+    let states: [f32; 11] = [
+        0.0_f32, 0.1_f32, 0.2_f32, 0.3_f32, 0.4_f32, 0.5_f32, 0.6_f32, 0.7_f32, 0.8_f32, 0.9_f32,
+        1.0_f32,
+    ];
+    loop {
+        let received = receiver.changed().await;
+        if received.bms_panic.is_some() {
+            pwm.set_duty(0);
+            loop {
+                embassy_time::Timer::after_secs(1).await;
+            }
+        }
+        if received.default_overrides.is_some() {
+            def_right_pwm = received.default_overrides.unwrap().pwm_pumpr();
+            def_left_pwm = received.default_overrides.unwrap().pwm_pumpl();
+            pwm.set_duty_left(def_left_pwm);
+            pwm.set_duty_right(def_right_pwm);
+            i = states.len() - 1;
+        }
+        if received.state_change.is_some() {
+            let mut tck = embassy_time::Ticker::every(Duration::from_millis(1_000));
+            let delta_right: f32 = percent_to_duty(5).abs_diff(def_right_pwm) as f32;
+            let delta_left: f32 = percent_to_duty(5).abs_diff(def_left_pwm) as f32;
+            let (prev_state, curr_state) = received.state_change.unwrap();
+            if curr_state == can_2::CarStatusRunningStatus::Running {
+                for j in i..states.len() {
+                    tck.next().await;
+                    if receiver.contains_value() {
+                        // break; HACK:
+                    }
+                    i = j;
+                    pwm.set_duty_right(percent_to_duty(5) + ((states[i] * delta_right) as u16));
+                    pwm.set_duty_left(percent_to_duty(5) + ((states[i] * delta_left) as u16));
+                }
+            } else if prev_state == can_2::CarStatusRunningStatus::Running {
+                for _ in 0..5 {
+                    tck.next().await;
+                    if receiver.contains_value() {
+                        // break; HACK:
+                    }
+                }
+                for j in i..=0 {
+                    tck.next().await;
+                    if receiver.contains_value() {
+                        // break; HACK:
+                    }
+                    i = j;
+                    pwm.set_duty_right(percent_to_duty(5) + ((states[i] * delta_right) as u16));
+                    pwm.set_duty_left(percent_to_duty(5) + ((states[i] * delta_left) as u16));
+                }
+            }
         }
     }
 }
