@@ -314,24 +314,29 @@ async fn fanrad_control(mut pwm: PwmDualController<'static, embassy_stm32::perip
             if curr_state == can_2::CarStatusRunningStatus::Running {
                 for j in i..states.len() {
                     tck.next().await;
-                    if receiver.contains_value() {
-                        // break; HACK:
-                    }
+                    //NOTE: those hacks are needed because contain_value returns true also if
+                    //changed saw the value, so I understand that contains_value checks only if 
+                    //it has ever been signaled
+                    //This code was needed to break a ramp if tsms was switched in between for
+                    //example
+                    // if receiver.contains_value() { //HACK:
+                    //     break;
+                    // }
                     i = j;
                     pwm.set_duty(percent_to_duty(5) + ((states[i] * delta) as u16));
                 }
             } else if prev_state == can_2::CarStatusRunningStatus::Running {
                 for _ in 0..10 {
                     tck.next().await;
-                    if receiver.contains_value() {
-                        // break; HACK:
-                    }
+                    // if receiver.contains_value() { //HACK:
+                    //     break;
+                    // }
                 }
-                for j in i..=0 {
+                for j in (0..=i).rev() {
                     tck.next().await;
-                    if receiver.contains_value() {
-                        // break;
-                    }
+                    // if receiver.contains_value() { //HACK:
+                    //     break;
+                    // }
                     i = j;
                     pwm.set_duty(percent_to_duty(5) + ((states[i] * delta) as u16));
                 }
@@ -342,8 +347,10 @@ async fn fanrad_control(mut pwm: PwmDualController<'static, embassy_stm32::perip
 
 #[embassy_executor::task]
 async fn fanbatt_control(mut pwm: PwmDualController<'static, embassy_stm32::peripherals::TIM3, 1>) {
-    let mut def_pwm: u16 = percent_to_duty(40);
+    let mut def_pwm: u16 = percent_to_duty(100);
     let mut receiver = SGN_COOLING.receiver().unwrap();
+    pwm.set_level(0, true);
+    pwm.set_duty(percent_to_duty(100));
 
     loop {
         let received = receiver.changed().await;
@@ -414,12 +421,12 @@ async fn pump_control(mut pwm: PwmDualController<'static, embassy_stm32::periphe
             let delta_right: f32 = percent_to_duty(5).abs_diff(def_right_pwm) as f32;
             let delta_left: f32 = percent_to_duty(5).abs_diff(def_left_pwm) as f32;
             let (prev_state, curr_state) = received.state_change.unwrap();
-            if curr_state == can_2::CarStatusRunningStatus::Running {
+            if curr_state == can_2::CarStatusRunningStatus::Running || (curr_state == can_2::CarStatusRunningStatus::TsReady && prev_state == can_2::CarStatusRunningStatus::PrechargeStarted) {
                 for j in i..states.len() {
                     tck.next().await;
-                    if receiver.contains_value() {
-                        // break; HACK:
-                    }
+                    // if receiver.contains_value() { //HACK:
+                    //     break;
+                    // }
                     i = j;
                     pwm.set_duty_right(percent_to_duty(5) + ((states[i] * delta_right) as u16));
                     pwm.set_duty_left(percent_to_duty(5) + ((states[i] * delta_left) as u16));
@@ -427,15 +434,15 @@ async fn pump_control(mut pwm: PwmDualController<'static, embassy_stm32::periphe
             } else if prev_state == can_2::CarStatusRunningStatus::Running {
                 for _ in 0..5 {
                     tck.next().await;
-                    if receiver.contains_value() {
-                        // break; HACK:
-                    }
+                    // if receiver.contains_value() { //HACK:
+                    //     break;
+                    // }
                 }
-                for j in i..=0 {
+                for j in (0..=i).rev() {
                     tck.next().await;
-                    if receiver.contains_value() {
-                        // break; HACK:
-                    }
+                    // if receiver.contains_value() { //HACK:
+                    //     break;
+                    // }
                     i = j;
                     pwm.set_duty_right(percent_to_duty(5) + ((states[i] * delta_right) as u16));
                     pwm.set_duty_left(percent_to_duty(5) + ((states[i] * delta_left) as u16));
