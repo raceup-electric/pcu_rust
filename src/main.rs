@@ -1,12 +1,9 @@
 #![no_std]
 #![no_main]
 
-use core::{
-    cmp::{max, min},
-    ops::Index,
-};
+use core::ops::Index;
 
-use embassy_executor::{Executor, Spawner};
+use embassy_executor::Spawner;
 use embassy_futures::select::*;
 use embassy_stm32::{
     adc::Adc,
@@ -16,14 +13,11 @@ use embassy_stm32::{
     timer::simple_pwm::{PwmPin, SimplePwm},
 };
 use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, mutex::Mutex, signal::Signal,
-    watch::Watch,
+    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal, watch::Watch,
 };
-use embassy_time::{Duration, Instant, Ticker};
+use embassy_time::{Duration, Ticker};
 
 use defmt::*;
-use embedded_hal::blocking::can;
-use static_cell::StaticCell;
 
 mod can_management;
 mod pins;
@@ -35,11 +29,10 @@ use crate::can_management::{
 use crate::pins::*;
 use crate::pwm_management::PwmDualController;
 
-static TASK_SPAWNER: StaticCell<Spawner> = StaticCell::new();
-
 static CAN_PWM_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CoolingControl> = Signal::new();
 static CAN_BMS_EMERGENCY_CHANNEL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 static CAN_MISSIONSTATUS_CHANNEL: Signal<CriticalSectionRawMutex, can_2::CarStatus> = Signal::new();
+static CAN_SW_CONTROL: Signal<CriticalSectionRawMutex, can_2::PcuSwControl> = Signal::new();
 
 static CAN_RF_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM1> = Signal::new();
 static CAN_ENABLES_CHANNEL: Signal<CriticalSectionRawMutex, can_2::PcuModeM2> = Signal::new();
@@ -54,6 +47,7 @@ struct SgnCooling {
     state_change: Option<(can_2::CarStatusRunningStatus, can_2::CarStatusRunningStatus)>,
     default_overrides: Option<can_2::CoolingControl>,
     bms_panic: Option<bool>,
+    sw_control: Option<can_2::PcuSwControl>,
 }
 
 #[embassy_executor::main]
@@ -84,7 +78,7 @@ async fn main(spawner: Spawner) {
                 can_2::CoolingControl::MESSAGE_ID as u16
             ))),
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
-                can_2::BmsLvEmergency::MESSAGE_ID as u16
+                can_2::LvError::MESSAGE_ID as u16
             ))),
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
         ]),
@@ -99,7 +93,9 @@ async fn main(spawner: Spawner) {
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
                 can_2::CarStatus::MESSAGE_ID as u16
             ))),
-            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
+            ListEntry16::data_frames_with_id(unwrap!(StandardId::new(
+                can_2::PcuSwControl::MESSAGE_ID as u16,
+            ))),
             ListEntry16::data_frames_with_id(unwrap!(StandardId::new(0x1))),
         ]),
     );
@@ -204,7 +200,7 @@ async fn pwm(pins: Pwm, spawner: Spawner) {
     let pumpr_pwm_ch = pump_pwm_channels.ch1;
     let pumpl_pwm_ch = pump_pwm_channels.ch2;
 
-    let mut pwm_fanrad: PwmDualController<'_, embassy_stm32::peripherals::TIM2, 1> =
+    let pwm_fanrad: PwmDualController<'_, embassy_stm32::peripherals::TIM2, 1> =
         PwmDualController::new(
             fanradl_pwm_ch,
             fanradr_pwm_ch,
@@ -213,7 +209,7 @@ async fn pwm(pins: Pwm, spawner: Spawner) {
             Output::new(pins.enable_fanradr, Level::Low, Speed::Low),
         );
 
-    let mut pwm_fanbatt: PwmDualController<'_, embassy_stm32::peripherals::TIM3, 1> =
+    let pwm_fanbatt: PwmDualController<'_, embassy_stm32::peripherals::TIM3, 1> =
         PwmDualController::new(
             fanbattl_pwm_ch,
             fanbattr_pwm_ch,
@@ -222,7 +218,7 @@ async fn pwm(pins: Pwm, spawner: Spawner) {
             Output::new(pins.enable_fanbattr, Level::Low, Speed::Low),
         );
 
-    let mut pwm_pump: PwmDualController<'_, embassy_stm32::peripherals::TIM4, 1> =
+    let pwm_pump: PwmDualController<'_, embassy_stm32::peripherals::TIM4, 1> =
         PwmDualController::new(
             pumpr_pwm_ch,
             pumpl_pwm_ch,
@@ -239,36 +235,47 @@ async fn pwm(pins: Pwm, spawner: Spawner) {
 
     let mut prev_state = CarStatusRunningStatus::SystemOff;
     loop {
-
-        match select3(
+        match select4(
             CAN_MISSIONSTATUS_CHANNEL.wait(),
             CAN_PWM_CHANNEL.wait(),
             CAN_BMS_EMERGENCY_CHANNEL.wait(),
+            CAN_SW_CONTROL.wait(),
         )
         .await
         {
-            Either3::First(mes) => {
+            Either4::First(mes) => {
                 if mes.running_status() != prev_state {
                     sender.send(SgnCooling {
                         state_change: Some((prev_state, mes.running_status())),
                         default_overrides: None,
                         bms_panic: None,
+                        sw_control: None,
                     });
                     prev_state = mes.running_status();
                 }
             }
-            Either3::Second(mes) => {
+            Either4::Second(mes) => {
                 sender.send(SgnCooling {
                     state_change: None,
                     default_overrides: Some(mes),
                     bms_panic: None,
+                    sw_control: None,
                 });
             }
-            Either3::Third(_) => {
+            Either4::Third(_) => {
                 sender.send(SgnCooling {
                     state_change: None,
                     default_overrides: None,
                     bms_panic: Some(true),
+                    sw_control: None,
+                });
+            }
+            Either4::Fourth(mes) => {
+                sender.send(SgnCooling {
+                    state_change: None,
+                    default_overrides: None,
+                    bms_panic: None,
+                    sw_control: Some(mes),
                 });
             }
         }
@@ -296,6 +303,42 @@ async fn fanrad_control(mut pwm: PwmDualController<'static, embassy_stm32::perip
     let states: [f32; 4] = [0.0_f32, 0.33_f32, 0.66_f32, 1.0_f32];
     loop {
         let received = receiver.changed().await;
+        if received.sw_control.is_some() {
+            let mut tck = embassy_time::Ticker::every(Duration::from_millis(500));
+            let delta: f32 = percent_to_duty(5).abs_diff(def_pwm) as f32;
+            match received.sw_control.unwrap().fan() {
+                can_2::PcuSwControlFan::On => {
+                    if pwm.duty_right() != def_pwm {
+                        for j in i..states.len() {
+                            tck.next().await;
+                            //NOTE: those hacks are needed because contain_value returns true also if
+                            //changed saw the value, so I understand that contains_value checks only if
+                            //it has ever been signaled
+                            //This code was needed to break a ramp if tsms was switched in between for
+                            //example
+                            // if receiver.contains_value() { //HACK:
+                            //     break;
+                            // }
+                            i = j;
+                            pwm.set_duty(percent_to_duty(5) + ((states[i] * delta) as u16));
+                        }
+                    }
+                }
+                can_2::PcuSwControlFan::Off => {
+                    if pwm.duty_right() != percent_to_duty(5) {
+                        for j in (0..=i).rev() {
+                            tck.next().await;
+                            // if receiver.contains_value() { //HACK:
+                            //     break;
+                            // }
+                            i = j;
+                            pwm.set_duty(percent_to_duty(5) + ((states[i] * delta) as u16));
+                        }
+                    }
+                }
+                can_2::PcuSwControlFan::_Other(_) => {}
+            }
+        }
         if received.bms_panic.is_some() {
             pwm.set_duty(0);
             loop {
@@ -312,33 +355,32 @@ async fn fanrad_control(mut pwm: PwmDualController<'static, embassy_stm32::perip
             let delta: f32 = percent_to_duty(5).abs_diff(def_pwm) as f32;
             let (prev_state, curr_state) = received.state_change.unwrap();
             if curr_state == can_2::CarStatusRunningStatus::Running {
-                for j in i..states.len() {
-                    tck.next().await;
-                    //NOTE: those hacks are needed because contain_value returns true also if
-                    //changed saw the value, so I understand that contains_value checks only if 
-                    //it has ever been signaled
-                    //This code was needed to break a ramp if tsms was switched in between for
-                    //example
-                    // if receiver.contains_value() { //HACK:
-                    //     break;
-                    // }
-                    i = j;
-                    pwm.set_duty(percent_to_duty(5) + ((states[i] * delta) as u16));
+                if pwm.duty_right() != def_pwm {
+                    for j in i..states.len() {
+                        tck.next().await;
+                        // if receiver.contains_value() { //HACK:
+                        //     break;
+                        // }
+                        i = j;
+                        pwm.set_duty(percent_to_duty(5) + ((states[i] * delta) as u16));
+                    }
                 }
             } else if prev_state == can_2::CarStatusRunningStatus::Running {
-                for _ in 0..10 {
-                    tck.next().await;
-                    // if receiver.contains_value() { //HACK:
-                    //     break;
-                    // }
-                }
-                for j in (0..=i).rev() {
-                    tck.next().await;
-                    // if receiver.contains_value() { //HACK:
-                    //     break;
-                    // }
-                    i = j;
-                    pwm.set_duty(percent_to_duty(5) + ((states[i] * delta) as u16));
+                if pwm.duty_right() != def_pwm {
+                    for _ in 0..10 {
+                        tck.next().await;
+                        // if receiver.contains_value() { //HACK:
+                        //     break;
+                        // }
+                    }
+                    for j in (0..=i).rev() {
+                        tck.next().await;
+                        // if receiver.contains_value() { //HACK:
+                        //     break;
+                        // }
+                        i = j;
+                        pwm.set_duty(percent_to_duty(5) + ((states[i] * delta) as u16));
+                    }
                 }
             }
         }
@@ -403,6 +445,50 @@ async fn pump_control(mut pwm: PwmDualController<'static, embassy_stm32::periphe
     ];
     loop {
         let received = receiver.changed().await;
+        if received.sw_control.is_some() {
+            let delta_right: f32 = percent_to_duty(5).abs_diff(def_right_pwm) as f32;
+            let delta_left: f32 = percent_to_duty(5).abs_diff(def_left_pwm) as f32;
+            let mut tck = embassy_time::Ticker::every(Duration::from_millis(300));
+            match received.sw_control.unwrap().pump() {
+                can_2::PcuSwControlPump::On => {
+                    if pwm.duty_right() != def_right_pwm || pwm.duty_left() != def_left_pwm {
+                        for j in i..states.len() {
+                            tck.next().await;
+                            // if receiver.contains_value() { //HACK:
+                            //     break;
+                            // }
+                            i = j;
+                            pwm.set_duty_right(
+                                percent_to_duty(5) + ((states[i] * delta_right) as u16),
+                            );
+                            pwm.set_duty_left(
+                                percent_to_duty(5) + ((states[i] * delta_left) as u16),
+                            );
+                        }
+                    }
+                }
+                can_2::PcuSwControlPump::Off => {
+                    if pwm.duty_left() != percent_to_duty(5)
+                        || pwm.duty_right() != percent_to_duty(5)
+                    {
+                        for j in (0..=i).rev() {
+                            tck.next().await;
+                            // if receiver.contains_value() { //HACK:
+                            //     break;
+                            // }
+                            i = j;
+                            pwm.set_duty_right(
+                                percent_to_duty(5) + ((states[i] * delta_right) as u16),
+                            );
+                            pwm.set_duty_left(
+                                percent_to_duty(5) + ((states[i] * delta_left) as u16),
+                            );
+                        }
+                    }
+                }
+                can_2::PcuSwControlPump::_Other(_) => {}
+            }
+        }
         if received.bms_panic.is_some() {
             pwm.set_duty(0);
             loop {
@@ -421,31 +507,38 @@ async fn pump_control(mut pwm: PwmDualController<'static, embassy_stm32::periphe
             let delta_right: f32 = percent_to_duty(5).abs_diff(def_right_pwm) as f32;
             let delta_left: f32 = percent_to_duty(5).abs_diff(def_left_pwm) as f32;
             let (prev_state, curr_state) = received.state_change.unwrap();
-            if curr_state == can_2::CarStatusRunningStatus::Running || (curr_state == can_2::CarStatusRunningStatus::TsReady && prev_state == can_2::CarStatusRunningStatus::PrechargeStarted) {
-                for j in i..states.len() {
-                    tck.next().await;
-                    // if receiver.contains_value() { //HACK:
-                    //     break;
-                    // }
-                    i = j;
-                    pwm.set_duty_right(percent_to_duty(5) + ((states[i] * delta_right) as u16));
-                    pwm.set_duty_left(percent_to_duty(5) + ((states[i] * delta_left) as u16));
+            if curr_state == can_2::CarStatusRunningStatus::Running
+                || (curr_state == can_2::CarStatusRunningStatus::TsReady
+                    && prev_state == can_2::CarStatusRunningStatus::PrechargeStarted)
+            {
+                if pwm.duty_right() != def_right_pwm || pwm.duty_left() != def_left_pwm {
+                    for j in i..states.len() {
+                        tck.next().await;
+                        // if receiver.contains_value() { //HACK:
+                        //     break;
+                        // }
+                        i = j;
+                        pwm.set_duty_right(percent_to_duty(5) + ((states[i] * delta_right) as u16));
+                        pwm.set_duty_left(percent_to_duty(5) + ((states[i] * delta_left) as u16));
+                    }
                 }
             } else if prev_state == can_2::CarStatusRunningStatus::Running {
-                for _ in 0..5 {
-                    tck.next().await;
-                    // if receiver.contains_value() { //HACK:
-                    //     break;
-                    // }
-                }
-                for j in (0..=i).rev() {
-                    tck.next().await;
-                    // if receiver.contains_value() { //HACK:
-                    //     break;
-                    // }
-                    i = j;
-                    pwm.set_duty_right(percent_to_duty(5) + ((states[i] * delta_right) as u16));
-                    pwm.set_duty_left(percent_to_duty(5) + ((states[i] * delta_left) as u16));
+                if pwm.duty_left() != percent_to_duty(5) || pwm.duty_right() != percent_to_duty(5) {
+                    for _ in 0..5 {
+                        tck.next().await;
+                        // if receiver.contains_value() { //HACK:
+                        //     break;
+                        // }
+                    }
+                    for j in (0..=i).rev() {
+                        tck.next().await;
+                        // if receiver.contains_value() { //HACK:
+                        //     break;
+                        // }
+                        i = j;
+                        pwm.set_duty_right(percent_to_duty(5) + ((states[i] * delta_right) as u16));
+                        pwm.set_duty_left(percent_to_duty(5) + ((states[i] * delta_left) as u16));
+                    }
                 }
             }
         }
@@ -652,11 +745,14 @@ async fn read_can(mut can: CanRx<'static>) {
                     can_2::Messages::CarStatus(mes) => {
                         CAN_MISSIONSTATUS_CHANNEL.signal(mes);
                     }
-                    can_2::Messages::BmsLvEmergency(_) => {
+                    can_2::Messages::LvError(_) => {
                         CAN_BMS_EMERGENCY_CHANNEL.signal(true);
                     }
                     can_2::Messages::CoolingControl(mes) => {
                         CAN_PWM_CHANNEL.signal(mes);
+                    }
+                    can_2::Messages::PcuSwControl(mes) => {
+                        CAN_SW_CONTROL.signal(mes);
                     }
                     _ => {}
                 }
