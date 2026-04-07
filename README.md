@@ -1,5 +1,7 @@
 # PCU - Power Control Unit
 
+![PCU v3.1](https://raw.githubusercontent.com/raceup-electric/pcu_rust/main/RACE_UP_064_PCU_v3.1.png)
+
 ## Introduzione
 
 La PCU (Power Control Unit) gestisce la distribuzione e il monitoraggio della potenza all'interno del sistema. Si occupa del controllo di vari dispositivi attraverso ADC e comunicazione CAN, oltre a implementare meccanismi di fault detection.
